@@ -1,0 +1,57 @@
+name: Unit tests (full)
+# Runs the whole vitest suite - source unit tests plus the dependency contract
+# tests in src/dependencies/ - against the exact versions in package-lock.json.
+# `npm ci` also fails if package.json and package-lock.json are out of sync.
+#
+# Complements tests.yml (a plain `npm test`) by pinning installs to the
+# lockfile, covering two Node versions, and reporting the dependency contract
+# tests as their own job so a package-update break is easy to spot.
+on:
+  pull_request:
+  push:
+    branches: [master-dev, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-contracts:
+    name: Dependency contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install (locked)
+        run: npm ci
+      - name: Dependency contract tests
+        run: npx vitest run src/dependencies
+
+  unit-tests:
+    name: Unit tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install (locked)
+        run: npm ci
+      - name: Run all unit tests
+        run: npm test
