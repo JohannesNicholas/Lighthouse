@@ -3,6 +3,7 @@ import { makePopupNode, bindKoToPopup, unbindKoFromPopup, deferPopupUpdate } fro
 
 import { buildAssetPopupKO } from '../components/asset_popup.js';
 import { buildIcon } from '../components/asset_icon.js';
+import { restorePinPlacement } from './assetPinLayout.js';
 
 function refreshAssetMarkerIcons(asset) {
   //check the html of a new icon vs the current icon to avoid unnecessary updates
@@ -12,6 +13,7 @@ function refreshAssetMarkerIcons(asset) {
     const newIcon = buildIcon(asset, 'matched');
     if (asset.marker.options.icon.options.html !== newIcon.options.html) {
       asset.marker.setIcon(newIcon);
+      restorePinPlacement(asset.marker);
     }
   }
 
@@ -20,15 +22,32 @@ function refreshAssetMarkerIcons(asset) {
     const newIcon = buildIcon(asset, 'unmatched');
     if (asset.unmatchedMarker.options.icon.options.html !== newIcon.options.html) {
       asset.unmatchedMarker.setIcon(newIcon);
+      restorePinPlacement(asset.unmatchedMarker);
     }
   }
 }
 
 
 /**
- * Smoothly move (or just set) the marker to a position.
+ * While a marker's popup is open (clicked, or zoomed to from a team or the
+ * asset library), draw it above its neighbours with the hover highlight, so
+ * it's obvious which pin the popup belongs to.
  */
-function moveMarker(marker, lat, lng, { duration = 700, fps = 60 } = {}) {
+function focusWhilePopupOpen(marker) {
+  const set = (on) => {
+    marker.setZIndexOffset(on ? 1000 : 0);
+    marker.getElement()?.querySelector('.asset-pin')?.classList.toggle('is-focused', on);
+  };
+  marker.on('popupopen', () => set(true));
+  marker.on('popupclose', () => set(false));
+}
+
+/**
+ * Smoothly move (or just set) the marker to a position. onMove runs after
+ * every step, including the last. marker._pinMoving is true while it's on
+ * the way, so the pin layout lets it fit in around pins that aren't moving.
+ */
+function moveMarker(marker, lat, lng, { duration = 700, fps = 60, onMove } = {}) {
   if (!marker) return;
   const to = L.latLng(lat, lng);
   const from = marker.getLatLng?.() || to;
@@ -37,6 +56,7 @@ function moveMarker(marker, lat, lng, { duration = 700, fps = 60 } = {}) {
   // small move -> no animation
   if (dist < 1) {
     marker.setLatLng(to);
+    onMove?.();
     return;
   }
 
@@ -53,10 +73,15 @@ function moveMarker(marker, lat, lng, { duration = 700, fps = 60 } = {}) {
     const latS = from.lat + (to.lat - from.lat) * t;
     const lngS = from.lng + (to.lng - from.lng) * t;
     marker.setLatLng([latS, lngS]);
+    if (f >= frames) {
+      marker._moveAnimCancel = null;
+      marker._pinMoving = false;
+    }
+    onMove?.();
     if (f < frames) rafId = requestAnimationFrame(step);
-    else marker._moveAnimCancel = null;
   };
 
+  marker._pinMoving = true;
   marker._moveAnimCancel = () => { if (rafId) cancelAnimationFrame(rafId); };
   rafId = requestAnimationFrame(step);
 }
@@ -76,7 +101,8 @@ export function attachAssetMarker(ko, map, viewModel, asset) {
   const lng = +asset.longitude?.();
   if (Number.isFinite(lat) && Number.isFinite(lng) && !asset.marker) {
     const icon = buildIcon(asset, 'matched');
-    const m = L.marker([lat, lng], { icon, pane: 'pane-top' });
+    // riseOnHover: a hovered pin comes to the front, with its leader line.
+    const m = L.marker([lat, lng], { icon, pane: 'pane-top', riseOnHover: true });
     m._assetId = asset.id?.();
     const html = buildAssetPopupKO();
     const contentEl = makePopupNode(html, 'veh-pop-root'); // stable node
@@ -84,8 +110,18 @@ export function attachAssetMarker(ko, map, viewModel, asset) {
       minWidth: 360,
       maxWidth: 360,
       maxHeight: 360,
-      autoPan: true,
-      autoPanPadding: [16, 16],
+      // Leaflet auto-pans synchronously the instant the popup opens --
+      // before its KO-unbound (pristine, near-empty) content is replaced
+      // with the real thing in bindPopupWithKO's openHandler. Starting
+      // with autoPan off and switching it on there, once real content is
+      // bound, means autoPan only ever runs once per open, against real
+      // content, instead of once against a placeholder and again a
+      // moment later against the real (usually much bigger) popup.
+      // autoPanPadding comes from Popup.mergeOptions in
+      // utils/popupAutoPan.js, which keeps padding in sync with the map's
+      // corner controls (alerts banners, zoom tools, legend, ...).
+      autoPan: false,
+      pane: 'pane-popup-top',
     }).setContent(contentEl);
 
 
@@ -101,6 +137,7 @@ export function attachAssetMarker(ko, map, viewModel, asset) {
     asset.marker.on('popupopen', () => {
       viewModel.mapVM.setOpen('asset', asset);
     });
+    focusWhilePopupOpen(asset.marker);
   }
 
   // Already wired? Done.
@@ -113,7 +150,12 @@ export function attachAssetMarker(ko, map, viewModel, asset) {
   subs.push(asset.latLng.subscribe(v => {
     const latNow = +v?.lat, lngNow = +v?.lng;
     if (asset.marker && Number.isFinite(latNow) && Number.isFinite(lngNow)) {
-      moveMarker(asset.marker, latNow, lngNow);
+      moveMarker(asset.marker, latNow, lngNow, {
+        // Re-lay out pins on the way, so a pin straightens up as soon as it
+        // leaves a crowd rather than when it arrives (schedule() coalesces
+        // to one layout per frame).
+        onMove: viewModel.mapVM.assetPinLayout?.schedule,
+      });
     }
   }));
 
@@ -156,7 +198,7 @@ export function attachUnmatchedAssetMarker(ko, map, viewModel, asset) {
 
   if (Number.isFinite(lat) && Number.isFinite(lng) && !asset.unmatchedMarker) {
     const icon = buildIcon(asset, 'unmatched');
-    const m = L.marker([lat, lng], { icon, pane: 'pane-top' });
+    const m = L.marker([lat, lng], { icon, pane: 'pane-top', riseOnHover: true });
     m._assetId = asset.id?.();
 
     const html = buildAssetPopupKO();
@@ -165,8 +207,9 @@ export function attachUnmatchedAssetMarker(ko, map, viewModel, asset) {
       minWidth: 360,
       maxWidth: 360,
       maxHeight: 360,
-      autoPan: true,
-      autoPanPadding: [16, 16],
+      // See the matching comment on the matched-asset popup above.
+      autoPan: false,
+      pane: 'pane-popup-top',
     }).setContent(contentEl);
 
     m.bindPopup(popup);
@@ -179,6 +222,7 @@ export function attachUnmatchedAssetMarker(ko, map, viewModel, asset) {
     asset.unmatchedMarker.on('popupopen', () => {
       viewModel.mapVM.setOpen('asset', asset);
     });
+    focusWhilePopupOpen(asset.unmatchedMarker);
   }
 
   // subs (separate from asset._markerSubs)
@@ -190,7 +234,7 @@ export function attachUnmatchedAssetMarker(ko, map, viewModel, asset) {
   subs.push(asset.latLng.subscribe(v => {
     const latNow = +v?.lat, lngNow = +v?.lng;
     if (asset.unmatchedMarker && Number.isFinite(latNow) && Number.isFinite(lngNow)) {
-      moveMarker(asset.unmatchedMarker, latNow, lngNow);
+      moveMarker(asset.unmatchedMarker, latNow, lngNow, { onMove: viewModel.mapVM.assetPinLayout?.schedule });
     }
   }));
 
@@ -221,6 +265,14 @@ export function detachUnmatchedAssetMarker(ko, map, viewModel, asset) {
 function bindPopupWithKO(ko, marker, vm, asset, popupVm) {
   const openHandler = (e) => {
     const el = e.popup.getContent(); // our stable node
+    // A reopen (e.g. a double-click toggling closed->open again) can land
+    // inside the 250ms deferred-unbind window below. If so, the pending
+    // unbind is now stale -- cancel it, or it'll fire later and strip the
+    // bindings off a popup that's visibly open again (leaving it blank).
+    if (marker._pendingUnbindTimer) {
+      clearTimeout(marker._pendingUnbindTimer);
+      marker._pendingUnbindTimer = null;
+    }
     vm.mapVM.setOpen?.('asset', asset);
     bindKoToPopup(ko, popupVm, el);
 
@@ -229,12 +281,21 @@ function bindPopupWithKO(ko, marker, vm, asset, popupVm) {
       asset.matchingTeamsInView()?.length !== 0 && asset.matchingTeamsInView()[0].onPopupOpen();
     }
     popupVm.updatePopup?.();
+
+    // Real content is bound now -- turn autoPan on (it starts off, see
+    // the popup's own options) so the resulting pan is against the real
+    // content instead of the pristine placeholder Leaflet would
+    // otherwise have already panned for the instant the popup opened.
+    e.popup.options.autoPan = true;
     deferPopupUpdate(e.popup);
   };
 
   // Unbind after popup is fully closed for visual cleanliness
   const closeHandler = (e) => {
     const el = e.popup?.getContent();
+    // Turn autoPan back off for the next open -- see the popup's own
+    // options above for why.
+    if (e.popup) e.popup.options.autoPan = false;
     // Don't clear routes/crow-flies if the popup was closed as a
     // side-effect of a flyToBounds animation (e.g. spider collapse
     // from a zoom change after drawing a route).
@@ -245,8 +306,11 @@ function bindPopupWithKO(ko, marker, vm, asset, popupVm) {
     vm.mapVM.clearOpen?.();
     asset.matchingTeamsInView()?.length !== 0 && asset.matchingTeamsInView()[0].onPopupClose();
 
-    // Defer unbinding to after the close animation completes
-    setTimeout(() => {
+    // Defer unbinding to after the close animation completes. Tracked on
+    // the marker so a fast reopen (see openHandler above) can cancel it.
+    if (marker._pendingUnbindTimer) clearTimeout(marker._pendingUnbindTimer);
+    marker._pendingUnbindTimer = setTimeout(() => {
+      marker._pendingUnbindTimer = null;
       unbindKoFromPopup(ko, el);
     }, 250); // 250ms matches Leaflet's default fade animation
   };

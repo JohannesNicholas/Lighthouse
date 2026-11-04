@@ -3,15 +3,330 @@ import ko from 'knockout';
 
 import * as bootstrap from 'bootstrap5'; // Modal, Tooltip, etc.
 import { Enum } from '../utils/enum.js';
+import {
+    STACK_PANES, defaultStackIds, normaliseStackIds, insertStackId, mergeKnownOrder, clampOpacityPct,
+} from '../utils/layerStack.js';
+import {
+    createCollabLayer, deleteCollabLayer, updateCollabLayerModerators, updateCollabLayerPermissions,
+    updateCollabLayerAttachment,
+    refreshSubscribedLayers, searchLayersForHq, subscribeToLayer, unsubscribeFromLayer,
+} from '../mapLayers/collabLayer.js';
+import {
+    isMacPlatform, isModifierKey, hasModifier, captureComboFromEvent, formatHotkeyCombo,
+} from '../utils/hotkeyMatch.js';
+import {
+    ONSITE_GEOFENCE_DEFAULT_METRES, ONSITE_GEOFENCE_MIN_METRES, ONSITE_GEOFENCE_MAX_METRES,
+} from '../utils/onsiteGeofence.js';
+import { RESET_GROUPS, keysToReset } from '../utils/resetGroups.js';
+import { defaultLayoutPreset, splitLayoutPreset, joinLayoutPreset } from '../utils/layoutPreset.js';
 
 
 
-const FUNCTION_URL = "https://lambda.lighthouse-extension.com/lad/share";
+const FUNCTION_URL = "https://lambda.lighthouse-extension.com/lad_v2/share";
+
+/**
+ * Reusable search-and-pick-multiple-members widget backing a layer's
+ * moderator list -- used both for the "new layer" form and, later, for
+ * editing an existing layer's moderators per row (only the layer creator
+ * can, mirroring the server-side check in updateLayerModerators.js).
+ * Mirrors the recipient search/picker pattern in SMSTeamModalVM.js.
+ *
+ * Each picked entry is `{ id, name }`, `id` being the Beacon member id
+ * (Username) -- the same identity space as getMemberId()/createdByMemberId
+ * (see mapLayers/collabLayer.js's permissions section for why), resolved
+ * via `searchMembers` (Config.js's deps.searchMembers ->
+ * BeaconClient.users.search) rather than the PersonId space
+ * resolvePersonName()/getSimplePerson() use elsewhere on this page.
+ */
+function makeModeratorPicker(searchMembers, initial = []) {
+    const picker = {};
+    picker.moderators = ko.observableArray(initial.map(m => ({ ...m })));
+    picker.searchQuery = ko.observable('');
+    picker.searchResults = ko.observableArray([]);
+    picker.dropdownOpen = ko.observable(false);
+    picker.loading = ko.observable(false);
+    picker.hasFocus = ko.observable(false);
+
+    let searchTimer = null;
+
+    picker.clearSearch = () => {
+        picker.searchQuery('');
+        picker.searchResults([]);
+        picker.dropdownOpen(false);
+    };
+    picker.closeDropdown = () => {
+        // Delay lets a click on a dropdown item fire before it's hidden.
+        setTimeout(() => picker.dropdownOpen(false), 150);
+    };
+    picker.onSearchKeydown = (_vm, e) => {
+        if (e.key === 'Escape') { picker.clearSearch(); return true; }
+        if (e.key === 'Enter') {
+            const first = picker.searchResults()[0];
+            if (first) picker.addFromSearch(first);
+            return false;
+        }
+        return true;
+    };
+    picker.runSearch = async () => {
+        const q = (picker.searchQuery() || '').trim();
+        if (q.length < 2) {
+            picker.searchResults([]);
+            picker.dropdownOpen(false);
+            return;
+        }
+        // Opens immediately (loading state) rather than waiting for the
+        // response and gating on hasFocus() at that point -- matches the
+        // proven locationSearch pattern elsewhere in this file (self.query's
+        // subscribe), which found that fragile: a focus/blur timing quirk
+        // could leave a real, non-empty result list stuck hidden (reported
+        // as "the HQ picker doesn't drop down when there's only 1 result",
+        // same bug in every picker built from this same shape).
+        picker.searchResults([]);
+        picker.dropdownOpen(true);
+        picker.loading(true);
+        try {
+            const rows = await searchMembers(q);
+            // Username is required -- it's the member-id space moderator
+            // checks are authorized against (see collabLayer.js's
+            // permissions section), so a result without one can't actually
+            // be added as a moderator. Disabled accounts are still shown
+            // (just filtering them silently made real results disappear
+            // when a Disabled flag was set on training/test accounts).
+            const cleaned = (rows || [])
+                .filter(r => r.Username)
+                .map(r => {
+                    const entity = r.Entity ? String(r.Entity).trim() : '';
+                    return {
+                        id: String(r.Username),
+                        name: [r.Firstname, r.Lastname].filter(Boolean).join(' ') || String(r.Username),
+                        // Unit name alongside the member number disambiguates
+                        // same-named members across different units.
+                        detail: entity ? `${entity} · ${r.Username}` : String(r.Username),
+                    };
+                });
+            picker.searchResults(cleaned);
+        } catch (err) {
+            console.error('Member search failed:', err);
+            picker.searchResults([]);
+        } finally {
+            picker.loading(false);
+        }
+    };
+    picker.searchQuery.subscribe(() => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(picker.runSearch, 250);
+    });
+    picker.addFromSearch = (result) => {
+        if (!result) return;
+        if (!picker.moderators().some(m => m.id === result.id)) {
+            picker.moderators.push({ id: result.id, name: result.name });
+        }
+        picker.clearSearch();
+    };
+    picker.removeModerator = (moderator) => {
+        picker.moderators.remove(m => m.id === moderator.id);
+    };
+    /** Discards any in-progress edits, restoring the picker to `next`. */
+    picker.reset = (next = []) => {
+        picker.moderators(next.map(m => ({ ...m })));
+        picker.clearSearch();
+    };
+    return picker;
+}
+
+/**
+ * Single-select counterpart to makeModeratorPicker, backing a layer's
+ * "attach to event" field (see createCollabLayer's `event` param, and
+ * updateCollabLayerAttachment for changing it later). Same search/debounce
+ * shape, but holds at most one picked `{id, name, identifier}` rather than
+ * a list.
+ */
+function makeEventPicker(searchEvents, initial = null) {
+    const picker = {};
+    picker.selected = ko.observable(initial ? { ...initial } : null);
+    picker.searchQuery = ko.observable('');
+    picker.searchResults = ko.observableArray([]);
+    picker.dropdownOpen = ko.observable(false);
+    picker.loading = ko.observable(false);
+    picker.hasFocus = ko.observable(false);
+    // Precomputed (rather than a ternary in the data-bind attribute)
+    // because knockout-secure-binding's expression grammar doesn't support
+    // the conditional (?:) operator. Shows the identifier alongside the
+    // name (e.g. "6/1718 — Flood response") rather than name alone, since
+    // the name is often generic (see the create-layer form's chip and
+    // -- once the identifier is round-tripped through the layer object,
+    // see createLayer.js's eventIdentifier -- the layer list's own badge).
+    picker.selectedLabel = ko.pureComputed(() => {
+        const s = picker.selected();
+        if (!s) return '';
+        return s.identifier ? `${s.identifier} — ${s.name}` : s.name;
+    });
+
+    let searchTimer = null;
+
+    picker.clearSearch = () => {
+        picker.searchQuery('');
+        picker.searchResults([]);
+        picker.dropdownOpen(false);
+    };
+    picker.closeDropdown = () => {
+        setTimeout(() => picker.dropdownOpen(false), 150);
+    };
+    picker.onSearchKeydown = (_vm, e) => {
+        if (e.key === 'Escape') { picker.clearSearch(); return true; }
+        if (e.key === 'Enter') {
+            const first = picker.searchResults()[0];
+            if (first) picker.selectFromSearch(first);
+            return false;
+        }
+        return true;
+    };
+    picker.runSearch = async () => {
+        const q = (picker.searchQuery() || '').trim();
+        if (q.length < 2) {
+            picker.searchResults([]);
+            picker.dropdownOpen(false);
+            return;
+        }
+        // Opens immediately (loading state) rather than waiting for the
+        // response and gating on hasFocus() at that point -- see
+        // makeModeratorPicker above for why (same bug, same fix, shared
+        // across every picker built from this shape).
+        picker.searchResults([]);
+        picker.dropdownOpen(true);
+        picker.loading(true);
+        try {
+            const rows = await searchEvents(q);
+            const cleaned = (rows || [])
+                .filter(r => r.Id != null)
+                .map(r => ({
+                    id: String(r.Id),
+                    name: r.Name || `Event ${r.Id}`,
+                    identifier: r.Identifier || '',
+                }));
+            picker.searchResults(cleaned);
+        } catch (err) {
+            console.error('Event search failed:', err);
+            picker.searchResults([]);
+        } finally {
+            picker.loading(false);
+        }
+    };
+    picker.searchQuery.subscribe(() => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(picker.runSearch, 250);
+    });
+    picker.selectFromSearch = (result) => {
+        if (!result) return;
+        picker.selected(result);
+        picker.clearSearch();
+    };
+    picker.clearSelection = () => picker.selected(null);
+    /** Discards any in-progress edits, restoring the picker to `next`. */
+    picker.reset = (next = null) => {
+        picker.selected(next ? { ...next } : null);
+        picker.clearSearch();
+    };
+    return picker;
+}
+
+/**
+ * Single-select entity picker scoped to Headquarters-type entities, backing
+ * both a layer's required HQ attachment and the layer list's HQ filter
+ * (Config.js). Same search/debounce shape as makeEventPicker, but searches
+ * Beacon entities (deps.entitiesSearch, i.e. BeaconClient.entities.search)
+ * rather than events.
+ *
+ * Filtered to results carrying a HeadquartersStatusTypeId -- confirmed
+ * against a live Entities/Search response as the actual "this entity is an
+ * HQ" signal (a real HQ came back with EntityTypeId: 2, e.g. a Zone HQ
+ * under State Headquarters' EntityTypeId: 1 -- EntityTypeId varies by
+ * level in the org hierarchy and is *not* a reliable "is this an HQ" check
+ * on its own, unlike HeadquartersStatusTypeId which only ever appears on
+ * HQ-type entities).
+ */
+function makeHqPicker(searchEntities, initial = null) {
+    const picker = {};
+    picker.selected = ko.observable(initial ? { ...initial } : null);
+    picker.searchQuery = ko.observable('');
+    picker.searchResults = ko.observableArray([]);
+    picker.dropdownOpen = ko.observable(false);
+    picker.loading = ko.observable(false);
+    picker.hasFocus = ko.observable(false);
+
+    let searchTimer = null;
+
+    picker.clearSearch = () => {
+        picker.searchQuery('');
+        picker.searchResults([]);
+        picker.dropdownOpen(false);
+    };
+    picker.closeDropdown = () => {
+        setTimeout(() => picker.dropdownOpen(false), 150);
+    };
+    picker.onSearchKeydown = (_vm, e) => {
+        if (e.key === 'Escape') { picker.clearSearch(); return true; }
+        if (e.key === 'Enter') {
+            const first = picker.searchResults()[0];
+            if (first) picker.selectFromSearch(first);
+            return false;
+        }
+        return true;
+    };
+    picker.runSearch = async () => {
+        const q = (picker.searchQuery() || '').trim();
+        if (q.length < 2) {
+            picker.searchResults([]);
+            picker.dropdownOpen(false);
+            return;
+        }
+        // Opens immediately (loading state) rather than waiting for the
+        // response and gating on hasFocus() at that point -- see
+        // makeModeratorPicker above for why (same bug, same fix, shared
+        // across every picker built from this shape).
+        picker.searchResults([]);
+        picker.dropdownOpen(true);
+        picker.loading(true);
+        try {
+            const rows = await searchEntities(q);
+            const cleaned = (rows || [])
+                .filter(r => r.Id != null && r.HeadquartersStatusTypeId != null)
+                .map(r => ({ id: String(r.Id), name: r.Name || `HQ ${r.Id}` }));
+            picker.searchResults(cleaned);
+        } catch (err) {
+            console.error('HQ search failed:', err);
+            picker.searchResults([]);
+        } finally {
+            picker.loading(false);
+        }
+    };
+    picker.searchQuery.subscribe(() => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(picker.runSearch, 250);
+    });
+    picker.selectFromSearch = (result) => {
+        if (!result) return;
+        picker.selected(result);
+        picker.clearSearch();
+    };
+    picker.clearSelection = () => picker.selected(null);
+    /** Discards any in-progress edits, restoring the picker to `next`. */
+    picker.reset = (next = null) => {
+        picker.selected(next ? { ...next } : null);
+        picker.clearSearch();
+    };
+    return picker;
+}
 
 
 
 export function ConfigVM(root, deps) {
     const self = this;
+
+    // Exposed publicly so code holding a ConfigVM reference (e.g.
+    // InstantTaskViewModel's `config`) can get the current Beacon token
+    // without its own deps plumbing.
+    self.getToken = deps.getToken;
 
     const LAYOUT_PRESETS = [
         'map-right-teams-top',
@@ -22,9 +337,11 @@ export function ConfigVM(root, deps) {
         'map-right-tasking-only',
         'map-left-teams-only',
         'map-left-tasking-only',
+        'map-right-tabbed',
+        'map-left-tabbed',
         'map-only'
     ];
-    const DEFAULT_LAYOUT_PRESET = 'map-right-teams-top';
+    const DEFAULT_LAYOUT_PRESET = defaultLayoutPreset(); // tabbed on tablets
     const normalizeLayoutPreset = (value) => {
         const key = String(value || '').trim();
         return LAYOUT_PRESETS.includes(key) ? key : DEFAULT_LAYOUT_PRESET;
@@ -58,6 +375,23 @@ export function ConfigVM(root, deps) {
     // Selected location filters
     self.teamFilters = ko.observableArray([]);     // [{id, name, entityType}]
     self.incidentFilters = ko.observableArray([]); // [{id, name, entityType}]
+
+    // Selected-filter boxes collapse past this many pills; a "…more" button
+    // toggles the expanded state.
+    self.locationPillCollapseAt = 9;
+    self.teamsExpanded = ko.observable(false);
+    self.incidentsExpanded = ko.observable(false);
+    self.toggleTeamsExpanded = () => self.teamsExpanded(!self.teamsExpanded());
+    self.toggleIncidentsExpanded = () => self.incidentsExpanded(!self.incidentsExpanded());
+    self.showTeamsMore = ko.pureComputed(() => self.teamFilters().length > self.locationPillCollapseAt);
+    self.showIncidentsMore = ko.pureComputed(() => self.incidentFilters().length > self.locationPillCollapseAt);
+    // Clip (fade + cap height, no inner scrollbar) only while collapsed.
+    self.teamsBoxClipped = ko.pureComputed(() => self.showTeamsMore() && !self.teamsExpanded());
+    self.incidentsBoxClipped = ko.pureComputed(() => self.showIncidentsMore() && !self.incidentsExpanded());
+    self.teamsMoreLabel = ko.pureComputed(() =>
+        self.teamsExpanded() ? 'Show fewer' : ('Show all ' + self.teamFilters().length));
+    self.incidentsMoreLabel = ko.pureComputed(() =>
+        self.incidentsExpanded() ? 'Show fewer' : ('Show all ' + self.incidentFilters().length));
     self.allowedIncidentTypeIds = ko.pureComputed(() =>
         new Set(self.incidentTypeFilter()
             .map(t => Enum.IncidentType[t]?.Id)
@@ -70,36 +404,155 @@ export function ConfigVM(root, deps) {
     self.applySectorsToIncidents = ko.observable(false);
     self.applySectorsToTeams = ko.observable(false);
 
-    //Map layer order
+    // Map layer order & transparency (utils/layerStack.js). stackIds is the
+    // full saved order, top -> bottom, including overlays that haven't
+    // registered yet; layerStackRows is what the list shows.
+    let stackIds = defaultStackIds();
+    let stackOpacity = {}; // id -> percent, only where it differs from the layer's default
+    const stackRowCache = new Map();
+    self.layerStackRows = ko.observableArray([]);
+    self.layerStackCount = ko.pureComputed(() => self.layerStackRows().length);
+    // List search: rows that don't match are hidden, not removed, so the
+    // full order stays intact for dragging and saving.
+    self.layerStackQuery = ko.observable('');
+    self.layerStackOnlyOn = ko.observable(false);
+    const layerStackTerms = ko.pureComputed(() =>
+        String(self.layerStackQuery() || '').toLowerCase().split(/\s+/).filter(Boolean));
+    self.layerStackShown = ko.pureComputed(() => self.layerStackRows().filter(r => r.matches()));
+    self.layerStackFiltered = ko.pureComputed(() => self.layerStackShown().length !== self.layerStackRows().length);
+    self.layerStackShownCount = ko.pureComputed(() => self.layerStackShown().length);
+    self.layerStackNoMatches = ko.pureComputed(() => self.layerStackShownCount() === 0);
+    self.clearLayerStackSearch = () => {
+        self.layerStackQuery('');
+        self.layerStackOnlyOn(false);
+    };
+    self.layerStackVisibleCount = ko.pureComputed(() => self.layerStackRows().filter(r => r.visible()).length);
 
-    self.paneDefs = [
-        { id: 'pane-tippy-top', name: 'Incident markers' },
-        { id: 'pane-top', name: 'Asset markers' },
-        { id: 'pane-middle', name: 'Map overlays icons & labels' },
-        { id: 'pane-lowest', name: 'Map overlay polygons & drawings' }
-    ];
+    const applyLayerStack = () => {
+        root.mapVM?.applyLayerStack?.(self.layerStackRows().map(r => ({ id: r.id, opacityPct: r.opacityPct() })));
+    };
 
-    // UI list (objects so bindings are property-only)
-    self.paneOrder = ko.observableArray(self.paneDefs.map(p => ({ id: p.id, name: p.name })));
-
-    self.rebuildPaneOrderFromIds = function (ids) {
-        const byId = new Map(self.paneDefs.map(p => [p.id, p]));
-        const list = (ids || [])
-            .map(id => byId.get(id))
-            .filter(Boolean)
-            .map(p => ({ id: p.id, name: p.name }));
-
-        // ensure all panes exist (append any missing)
-        self.paneDefs.forEach(p => {
-            if (!list.some(x => x.id === p.id)) list.push({ id: p.id, name: p.name });
+    const stackRow = (id) => {
+        let row = stackRowCache.get(id);
+        if (row) return row;
+        const pane = STACK_PANES.find(p => p.id === id);
+        const overlay = ko.observable(null);
+        row = {
+            id,
+            overlay,
+            isPane: !!pane,
+            name: ko.pureComputed(() => pane ? pane.name : (overlay()?.label || id)),
+            group: ko.pureComputed(() => pane ? 'Lighthouse' : (overlay()?.menuGroup || 'Other')),
+            visible: ko.pureComputed(() => pane ? true : !!overlay()?.visible()),
+            opacityPct: ko.observable(100),
+            defaultPct: () => overlay()?.defaultOpacity ?? 100,
+        };
+        row.opacityLabel = ko.pureComputed(() => `${row.opacityPct()}%`);
+        row.stateLabel = ko.pureComputed(() => (row.visible() ? 'On map' : 'Off'));
+        row.matches = ko.pureComputed(() => {
+            if (self.layerStackOnlyOn() && !row.visible()) return false;
+            const text = `${row.name()} ${row.group()}`.toLowerCase();
+            return layerStackTerms().every(t => text.includes(t));
         });
+        // First/last of the rows shown, so the arrows work on a searched list.
+        row.isFirst = ko.pureComputed(() => self.layerStackShown()[0] === row);
+        row.isLast = ko.pureComputed(() => self.layerStackShown().at(-1) === row);
+        row.visibleLabel = ko.pureComputed(() => `${row.visible() ? 'Hide' : 'Show'} ${row.name()} on the map`);
+        row.opacityPct.subscribe((raw) => {
+            const v = clampOpacityPct(raw);
+            if (v !== raw) { row.opacityPct(v); return; }
+            // Loads and resets record the value first, so only a change from
+            // the slider gets past here (subscribers run deferred).
+            if (v === (stackOpacity[id] ?? row.defaultPct())) return;
+            if (v === row.defaultPct()) delete stackOpacity[id]; else stackOpacity[id] = v;
+            applyLayerStack();
+            self.save();
+        });
+        stackRowCache.set(id, row);
+        return row;
+    };
 
-        self.paneOrder(list);
-    }
+    /** Rebuild the list from stackIds and the overlays the map has registered. */
+    self.syncLayerStackRows = () => {
+        const overlays = root.mapVM?.stackOverlays?.() || [];
+        const byId = new Map(overlays.map(o => [o.id, o]));
+        for (const o of overlays) {
+            if (!stackIds.includes(o.id)) stackIds = insertStackId(stackIds, o.id, o.stack, id => byId.get(id)?.stack);
+        }
+        const rows = stackIds
+            .filter(id => !id.startsWith('ov:') || byId.has(id))
+            .map(id => {
+                const row = stackRow(id);
+                if (!row.isPane) row.overlay(byId.get(id));
+                row.opacityPct(clampOpacityPct(stackOpacity[id] ?? row.defaultPct()));
+                return row;
+            });
+        self.layerStackRows(rows);
+        applyLayerStack();
+    };
+
+    /** Move a row past its next shown neighbour (skipping rows hidden by the search). */
+    const moveLayer = (row, by) => {
+        const rows = self.layerStackRows();
+        const shown = self.layerStackShown();
+        const neighbour = shown[shown.indexOf(row) + by];
+        const from = rows.indexOf(row);
+        const to = rows.indexOf(neighbour);
+        if (!neighbour || from < 0 || to < 0) return;
+        self.layerStackRows.splice(from, 1);
+        self.layerStackRows.splice(to, 0, row);
+    };
+    /** On/off switch on an overlay row (built-in rows have no switch). */
+    self.toggleLayerVisible = (row) => {
+        const o = row.overlay();
+        if (o) root.mapVM?.setOverlayVisible?.(o.key, !o.visible());
+        return true;
+    };
+    self.moveLayerUp = (row) => moveLayer(row, -1);
+    self.moveLayerDown = (row) => moveLayer(row, 1);
+
+    /** Open the modal at the Map layers tab (from the Layers drawer). */
+    self.openLayerStackSettings = (query = '') => {
+        self.layerStackQuery(String(query || '').trim());
+        self.layerStackOnlyOn(false);
+        const modalEl = document.getElementById('configModal');
+        const tabEl = document.getElementById('cfgTab-layers');
+        const paneEl = document.getElementById('cfgPane-layers');
+        if (!modalEl || !tabEl || !paneEl) return;
+        bootstrap.Tab.getOrCreateInstance(tabEl).show();
+        const focusSearch = () => paneEl.querySelector('input[type=search]')?.focus();
+        if (modalEl.classList.contains('show')) focusSearch();
+        else modalEl.addEventListener('shown.bs.modal', focusSearch, { once: true });
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    };
+
+    /** Put every layer back at its default position and full opacity. */
+    self.resetLayerStack = () => {
+        stackIds = defaultStackIds();
+        stackOpacity = {};
+        for (const row of stackRowCache.values()) row.opacityPct(row.defaultPct());
+        self.syncLayerStackRows();
+        self.save();
+    };
+
+    const loadLayerStack = (cfg) => {
+        // paneOrder: the marker-pane order saved before overlays were listed one by one
+        stackIds = normaliseStackIds(Array.isArray(cfg.layerStack) ? cfg.layerStack : cfg.paneOrder);
+        stackOpacity = {};
+        if (cfg.layerOpacity && typeof cfg.layerOpacity === 'object') {
+            for (const [id, v] of Object.entries(cfg.layerOpacity)) stackOpacity[id] = clampOpacityPct(v);
+        }
+        for (const row of stackRowCache.values()) row.opacityPct(clampOpacityPct(stackOpacity[row.id] ?? row.defaultPct()));
+        self.syncLayerStackRows();
+    };
 
     // Other settings
-    self.refreshInterval = ko.observable(60);
-    // Guard for reckless refresh interval changes
+    self.signalrEnabled = ko.observable(true);
+    self.refreshInterval = ko.observable(180);
+    // Guard for an aggressively short full-refresh interval. Slower is always
+    // safe, so only prompt when the new value drops below this many seconds --
+    // that's where every open copy of LAD starts hammering Beacon.
+    const REFRESH_GATE_SECONDS = 60;
     let lastRefreshInterval = self.refreshInterval();
     let suppressRecklessModal = false;
     self.refreshInterval.subscribe(function(newVal) {
@@ -107,9 +560,9 @@ export function ConfigVM(root, deps) {
             lastRefreshInterval = newVal;
             return;
         }
-        // Only trigger if the value is being changed to something different
-        if (Number(newVal) !== Number(lastRefreshInterval)) {
-            showRecklessModal({
+        const n = Number(newVal);
+        if (Number.isFinite(n) && n < REFRESH_GATE_SECONDS && n !== Number(lastRefreshInterval)) {
+            showShortRefreshModal(n, {
                 onConfirm: () => {
                     lastRefreshInterval = newVal;
                 },
@@ -120,60 +573,65 @@ export function ConfigVM(root, deps) {
                     suppressRecklessModal = false;
                 }
             });
+        } else {
+            lastRefreshInterval = newVal;
         }
     });
 
-    // Modal logic for reckless confirmation
-    function showRecklessModal({ onConfirm, onCancel }) {
-        // Create modal HTML if not present
-        let modal = document.getElementById('recklessModal');
+    // Confirm dialog for a very short full-refresh interval.
+    function showShortRefreshModal(seconds, { onConfirm, onCancel }) {
+        let modal = document.getElementById('shortRefreshModal');
         if (!modal) {
             modal = document.createElement('div');
-            modal.id = 'recklessModal';
+            modal.id = 'shortRefreshModal';
             modal.className = 'modal fade';
             modal.tabIndex = -1;
             modal.innerHTML = `
                 <div class="modal-dialog modal-dialog-centered">
                   <div class="modal-content">
-                    <div class="modal-header bg-danger text-white">
-                      <h5 class="modal-title">Are you sure?</h5>
+                    <div class="modal-header bg-warning text-dark">
+                      <h5 class="modal-title" id="shortRefreshTitle"></h5>
                       <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                      <p>Changing the refresh interval can have unintended consequences. To proceed, type <b>reckless</b> below and press Confirm.</p>
-                      <input id="recklessInput" type="text" class="form-control" placeholder="Type 'reckless' to confirm">
-                      <div id="recklessError" class="text-danger mt-2" style="display:none;">You must type 'reckless' to confirm.</div>
+                      <p>This will re-query <b>every</b> incident, team and tasking in your window from Beacon, on your machine, this often. Each sweep is a heavy set of calls and the board churns while it runs.</p>
+                      <p class="mb-3">Live updates already keep your board current between sweeps &mdash; you rarely need the full refresh this frequent.</p>
+                      <label class="form-label mb-1" for="shortRefreshInput">Type <b id="shortRefreshNum"></b> to confirm.</label>
+                      <input id="shortRefreshInput" type="text" class="form-control" autocomplete="off" inputmode="numeric">
+                      <div id="shortRefreshError" class="text-danger small mt-2" style="display:none;"></div>
                     </div>
                     <div class="modal-footer">
-                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="recklessCancel">Cancel</button>
-                      <button type="button" class="btn btn-danger" id="recklessConfirm">Confirm</button>
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="shortRefreshCancel">Keep previous</button>
+                      <button type="button" class="btn btn-warning" id="shortRefreshConfirm">Use this interval</button>
                     </div>
                   </div>
                 </div>
             `;
             document.body.appendChild(modal);
         }
+        modal.querySelector('#shortRefreshTitle').textContent = `Full refresh every ${seconds} seconds?`;
+        modal.querySelector('#shortRefreshNum').textContent = String(seconds);
+
         const bsModal = bootstrap.Modal.getOrCreateInstance(modal);
         bsModal.show();
 
-        // Reset input and error
-        const input = modal.querySelector('#recklessInput');
-        const error = modal.querySelector('#recklessError');
+        const input = modal.querySelector('#shortRefreshInput');
+        const error = modal.querySelector('#shortRefreshError');
         input.value = '';
         error.style.display = 'none';
         input.focus();
 
-        // Remove previous listeners
-        const confirmBtn = modal.querySelector('#recklessConfirm');
-        const cancelBtn = modal.querySelector('#recklessCancel');
+        const confirmBtn = modal.querySelector('#shortRefreshConfirm');
+        const cancelBtn = modal.querySelector('#shortRefreshCancel');
         confirmBtn.onclick = null;
         cancelBtn.onclick = null;
 
         confirmBtn.onclick = function() {
-            if (input.value.trim().toLowerCase() === 'reckless') {
+            if (input.value.trim() === String(seconds)) {
                 bsModal.hide();
                 onConfirm && onConfirm();
             } else {
+                error.textContent = `Type ${seconds} to confirm.`;
                 error.style.display = '';
                 input.focus();
             }
@@ -182,74 +640,768 @@ export function ConfigVM(root, deps) {
             bsModal.hide();
             onCancel && onCancel();
         };
-        // Also handle modal close (X button)
         modal.querySelector('.btn-close').onclick = function() {
             bsModal.hide();
             onCancel && onCancel();
         };
     }
+    // ── Collaborative map layers ──
+    //
+    // Two independent concerns, deliberately kept apart rather than merged
+    // into one HQ-scoped list-with-a-view-toggle (the earlier design here,
+    // which made a layer impossible to find/unsubscribe from once its HQ
+    // fell outside whatever filter happened to be selected):
+    //   - "My layers" (self.collabLayers/collabLayerRows below) -- every
+    //     layer this user is *subscribed* to (see collabLayerSync.js's
+    //     localStorage-backed subscription helpers; subscribing is a
+    //     client preference, not org data). Always lists every
+    //     subscription regardless of HQ, so managing/unsubscribing from
+    //     one never requires knowing which HQ it came from. You get here
+    //     either by creating a layer (auto-subscribes you) or by
+    //     subscribing to one found via "Find a layer" below.
+    //   - "Find a layer" (self.discoverHqPicker/discoverRows below) --
+    //     search one HQ at a time to discover layers to subscribe to. Pure
+    //     browse/discovery; never touches My layers except via an explicit
+    //     Subscribe click.
+    // Whether a subscribed layer is actually drawn on the map is the map's
+    // own Layers control's job entirely (LayersDrawer, main.js) -- this
+    // panel has no View/show-hide toggle of its own anymore. The one
+    // exception: creating a layer auto-shows it (see collabLayer.js's
+    // createCollabLayer) since whoever just made one almost certainly
+    // wants to see it immediately.
+    self.collabLayers = root.mapVM?.collabLayers || ko.observableArray([]);
+    // The whole "create a layer" flow (name, HQ, advanced options) is
+    // collapsed behind a single "+ New layer" toggle by default -- it's a
+    // lot of controls (mandatory HQ, optional event, 3 permission modes,
+    // moderators) to have permanently on-screen above what's usually the
+    // more-often-used layer list below.
+    self.showCreateLayerForm = ko.observable(false);
+    self.toggleCreateLayerForm = () => self.showCreateLayerForm(!self.showCreateLayerForm());
+    self.newLayerName = ko.observable('');
+    // Every layer must belong to an HQ -- defaults to whatever HQ this
+    // Lighthouse instance was launched for (?hq=<entity id>, resolved below
+    // into self.defaultHq), but can be changed via search before creating.
+    // Required (unlike the event picker below), enforced both here
+    // (createCollabLayer) and server-side (createLayer.js).
+    self.newLayerHqPicker = makeHqPicker(deps.entitiesSearch);
+    // Optional Beacon event this layer relates to -- purely display
+    // metadata (like createdBy), fixed at creation with no later
+    // "attach/detach event" flow (unlike the permission modes below, which
+    // -- like the moderator list -- can be changed later).
+    self.newLayerEventPicker = makeEventPicker(deps.searchEvents);
+    // Each mode defaults to 'anyone' here at creation time, but -- like the
+    // moderator list -- can be changed later by the creator or a current
+    // moderator, via each row's own "Manage permissions" control in
+    // collabLayerRows below (see mapLayers/collabLayer.js's
+    // updateCollabLayerPermissions). Each backed by a 3-way radio group in
+    // tasking.html: 'anyone' | 'creator' | 'moderators', all following the
+    // same "Anyone can ___" / "Only I can ___" / "Moderators can ___" shape
+    // for a consistent mental model across the three permissions. The
+    // moderator *list* itself is edited separately -- see
+    // newLayerModeratorPicker below and each row's own moderatorPicker in
+    // collabLayerRows.
+    self.newLayerMarkerMode = ko.observable('anyone'); // who can add/edit/delete markers
+    self.newLayerDeleteMode = ko.observable('anyone'); // who can delete the layer itself
+    self.newLayerCommentMode = ko.observable('anyone'); // who can comment on markers
+    self.newLayerModeratorPicker = makeModeratorPicker(deps.searchMembers);
+    // Shown only once at least one permission above is set to 'moderators'
+    // -- the moderator list is meaningless (and hidden) otherwise.
+    self.showNewLayerModeratorPicker = ko.pureComputed(() =>
+        self.newLayerMarkerMode() === 'moderators' ||
+        self.newLayerDeleteMode() === 'moderators' ||
+        self.newLayerCommentMode() === 'moderators');
+    self.creatingCollabLayer = ko.observable(false);
+    // Held true just long enough for the Create button to flash its
+    // success state before the form closes -- see createCollabLayer below.
+    self.collabLayerCreated = ko.observable(false);
+    self.collabLayerError = ko.observable('');
+    self.collabLayerSearch = ko.observable(''); // filters "My layers" by name -- mainly useful once you've subscribed to a lot of them
+    self.refreshingCollabLayers = ko.observable(false);
+    self.deletingCollabLayerId = ko.observable(null); // id of the row currently mid-delete, if any
+
+    // The row currently being edited in the standalone #collabPermissionsModal
+    // (tasking.html), or null when it's closed. A single shared observable
+    // (rather than a per-row "editing" flag rendered inline) so editing
+    // permissions doesn't nest one scroll area inside another -- the row
+    // list this modal is opened from is itself a small scrolling box
+    // (.collab-layer-list-scroll), and an expanding-in-place panel there
+    // forced a scrollbar-within-a-scrollbar. `with: config.permissionsModalRow`
+    // in the modal's markup means its contents simply don't exist in the DOM
+    // while this is null.
+    self.permissionsModalRow = ko.observable(null);
+    self.openPermissionsModal = (row) => {
+        row.permissionsError('');
+        row.editMarkerMode(row.markerMode);
+        row.editDeleteMode(row.deleteMode);
+        row.editCommentMode(row.commentMode);
+        row.hqEditPicker?.reset(row.hqId ? { id: row.hqId, name: row.hqName } : null);
+        row.eventEditPicker?.reset(row.eventId ? { id: row.eventId, name: row.eventName, identifier: row.eventIdentifier } : null);
+        row.moderatorPicker?.reset(row.moderators);
+        self.permissionsModalRow(row);
+        const modalEl = document.getElementById('collabPermissionsModal');
+        if (!modalEl) return;
+        // Attached lazily on first open (rather than at Config() construction
+        // time) since that's the first point this element is guaranteed to
+        // exist -- guarded so a second open doesn't stack a duplicate
+        // listener. Clears permissionsModalRow on every close, however it
+        // was triggered (Save, Cancel, the X button, backdrop click, Esc),
+        // so a row's draft state doesn't leak into the next layer opened.
+        if (!modalEl.dataset.permissionsListenerAttached) {
+            modalEl.dataset.permissionsListenerAttached = 'true';
+            modalEl.addEventListener('hidden.bs.modal', () => self.permissionsModalRow(null));
+        }
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    };
+
+    // ── Find a layer (discover/subscribe) ──
+    // Collapsed behind its own toggle by default, same reasoning as
+    // showCreateLayerForm above.
+    self.showDiscoverForm = ko.observable(false);
+    self.toggleDiscoverForm = () => {
+        self.showDiscoverForm(!self.showDiscoverForm());
+        // Fetch on first open (rather than requiring a search/HQ pick
+        // first) so opening this immediately shows something -- no HQ
+        // picked means "all HQs", not "nothing", see runDiscoverSearch.
+        if (self.showDiscoverForm() && self.discoverResults().length === 0 && !self.discoverLoading()) {
+            self.runDiscoverSearch();
+        }
+    };
+    // Browses one HQ's layers at a time to find something to subscribe to
+    // -- deliberately not the same picker as newLayerHqPicker above (that
+    // one's "what HQ does my new layer belong to", this one's "what HQ am
+    // I browsing"), even though both default to the same launch HQ.
+    self.discoverHqPicker = makeHqPicker(deps.entitiesSearch);
+    self.discoverSearch = ko.observable(''); // filters the picked HQ's results by name
+    self.discoverLoading = ko.observable(false);
+    self.discoverResults = ko.observableArray([]); // raw layer objects for the picked HQ
+    self.discoverError = ko.observable('');
+
+    // Resolves ?hq=<entity id> (deps.defaultHqId) once at startup and seeds
+    // both HQ pickers below with it -- the "new layer" picker so creating a
+    // layer defaults to this HQ, the "Find a layer" picker so discovery
+    // defaults to browsing this HQ's layers. Kept separately (self.defaultHq)
+    // so createCollabLayer can reset newLayerHqPicker back to it after each
+    // creation instead of clearing it to nothing (users creating several
+    // layers in a row are almost always doing it for the same HQ).
+    self.defaultHq = ko.observable(null);
+    if (deps.defaultHqId) {
+        Promise.resolve(deps.entity(deps.defaultHqId)).then(entity => {
+            if (!entity?.Id) return;
+            const hq = { id: String(entity.Id), name: entity.Name || String(entity.Id) };
+            self.defaultHq(hq);
+            self.newLayerHqPicker.reset(hq);
+            self.discoverHqPicker.reset(hq);
+        }).catch(err => console.warn('Failed to resolve default HQ:', err));
+    }
+
+    function relativeTime(iso) {
+        if (!iso) return 'never';
+        const ms = Date.now() - new Date(iso).getTime();
+        if (!Number.isFinite(ms) || ms < 0) return 'just now';
+        const mins = Math.round(ms / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.round(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        return `${Math.round(hrs / 24)}d ago`;
+    }
+
+    // Layers created before the moderators feature only carry the old
+    // readOnly / allowDeleteByOthers / disableComments booleans and no mode
+    // fields -- derive the equivalent mode so old layers display and behave
+    // the same as before (mirrors lambda/map-layers-v2/lib/permissions.js
+    // and collabLayer.js's effective*Mode() helpers, which every
+    // permission-enforcing Lambda handler and the map popup gating also
+    // fall back to).
+    function effectiveMarkerMode(layer) {
+        return layer.markerMode || (layer.readOnly ? 'creator' : 'anyone');
+    }
+    function effectiveDeleteMode(layer) {
+        return layer.deleteMode || (layer.allowDeleteByOthers === false ? 'creator' : 'anyone');
+    }
+    function effectiveCommentMode(layer) {
+        return layer.commentMode || (layer.disableComments ? 'creator' : 'anyone');
+    }
+    const MODE_LABELS = { anyone: 'Anyone', creator: 'Only the creator', moderators: 'The creator and moderators' };
+
+    // Sorted alphabetically so a long list stays scannable; filtered by
+    // collabLayerSearch below for the same reason.
+    self.collabLayerRows = ko.pureComputed(() => self.collabLayers()
+        .slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(layer => {
+            const memberId = deps.getMemberId?.();
+            const isCreator = !!memberId && memberId === layer.createdByMemberId;
+            const moderators = Array.isArray(layer.moderators) ? layer.moderators : [];
+            const isModerator = !!memberId && moderators.some(m => m?.id === memberId);
+            const markerMode = effectiveMarkerMode(layer);
+            const deleteMode = effectiveDeleteMode(layer);
+            const commentMode = effectiveCommentMode(layer);
+            const canDeleteByMode = deleteMode === 'anyone' || isCreator || (deleteMode === 'moderators' && isModerator);
+            // Creator or any current moderator can manage the moderator
+            // list (see lambda updateLayerModerators.js's isAuthorized
+            // check) -- a moderator can add/remove others, including
+            // themselves.
+            const canManageModerators = isCreator || isModerator;
+            const row = {
+                layer,
+                name: layer.name,
+                markerCount: layer.markerCount || 0,
+                lastUsedLabel: relativeTime(layer.lastUsedAt),
+                markerMode,
+                deleteMode,
+                commentMode,
+                markerRestricted: markerMode !== 'anyone',
+                commentRestricted: commentMode !== 'anyone',
+                markerModeTitle: `${MODE_LABELS[markerMode]} can add, edit or delete markers`,
+                commentModeTitle: `${MODE_LABELS[commentMode]} can comment`,
+                moderators,
+                moderatorCount: moderators.length,
+                // Precomputed (rather than a ternary in the data-bind
+                // attribute) because knockout-secure-binding's expression
+                // grammar doesn't support the conditional (?:) operator.
+                moderatorCountLabel: `${moderators.length} moderator${moderators.length === 1 ? '' : 's'}`,
+                moderatorNamesLabel: moderators.map(m => m.name).join(', '),
+                eventId: layer.eventId || null,
+                eventName: layer.eventName || null,
+                eventIdentifier: layer.eventIdentifier || null,
+                // Precomputed (rather than a ternary in the data-bind
+                // attribute) because knockout-secure-binding's expression
+                // grammar doesn't support the conditional (?:) operator.
+                eventLabel: layer.eventName
+                    ? (layer.eventIdentifier ? `${layer.eventIdentifier} — ${layer.eventName}` : layer.eventName)
+                    : null,
+                hqId: layer.hqId || null,
+                hqName: layer.hqName || null,
+                isCreator,
+                canDelete: canDeleteByMode,
+                confirmingDelete: ko.observable(false),
+                // layer.createdBy is a raw Beacon person id -- resolved
+                // asynchronously (and cached) to a display name via
+                // root.resolvePersonName, same as marker/comment authorship
+                // elsewhere on this page.
+                authorName: ko.observable(''),
+                // Creator or any current moderator can manage moderators
+                // (enforced server-side too, see updateLayerModerators.js)
+                // -- everyone else doesn't get the moderator picker in
+                // #collabPermissionsModal at all. Edited in that same modal
+                // as permissions/HQ/event (see saveRowPermissions), not its
+                // own separate inline panel.
+                canManageModerators,
+                moderatorPicker: canManageModerators ? makeModeratorPicker(deps.searchMembers, moderators) : null,
+                // Same authorization as moderator management -- creator or
+                // any current moderator (see lambda
+                // updateLayerPermissions.js) -- so this reuses
+                // canManageModerators rather than a second computed flag.
+                canManagePermissions: canManageModerators,
+                savingPermissions: ko.observable(false),
+                permissionsError: ko.observable(''),
+                // Separate observables (rather than binding the radios
+                // straight to row.markerMode/deleteMode/commentMode above)
+                // so opening the modal doesn't retroactively change what the
+                // row displays until Save is actually clicked -- same
+                // "draft, then commit" shape as moderatorPicker.
+                editMarkerMode: ko.observable(markerMode),
+                editDeleteMode: ko.observable(deleteMode),
+                editCommentMode: ko.observable(commentMode),
+                // HQ/event reassignment shares the same modal and the same
+                // authorization as the permission modes above (see
+                // updateLayerAttachment.js) -- same "draft, then commit"
+                // pickers as newLayerHqPicker/newLayerEventPicker in the
+                // create-layer form above, just seeded from this layer's
+                // current attachment instead of starting empty.
+                hqEditPicker: canManageModerators
+                    ? makeHqPicker(deps.entitiesSearch, layer.hqId ? { id: layer.hqId, name: layer.hqName } : null)
+                    : null,
+                eventEditPicker: canManageModerators
+                    ? makeEventPicker(deps.searchEvents, layer.eventId
+                        ? { id: layer.eventId, name: layer.eventName, identifier: layer.eventIdentifier }
+                        : null)
+                    : null,
+            };
+            if (layer.createdBy && root.resolvePersonName) {
+                root.resolvePersonName(layer.createdBy).then(name => row.authorName(name));
+            }
+            // Precomputed here (rather than a ternary in the data-bind
+            // attribute) because knockout-secure-binding's expression
+            // grammar doesn't support the conditional (?:) operator.
+            row.deleteTitle = row.canDelete ? 'Delete layer' : `${MODE_LABELS[deleteMode]} can delete this layer`;
+            row.unsubscribe = () => self.unsubscribeLayer(row);
+            row.requestDeleteLayer = () => row.confirmingDelete(true);
+            row.cancelDeleteLayer = () => row.confirmingDelete(false);
+            row.confirmDeleteLayer = () => self.deleteCollabLayer(row);
+            row.openPermissionsModal = () => self.openPermissionsModal(row);
+            row.savePermissions = () => self.saveRowPermissions(row);
+            return row;
+        }));
+
+    self.filteredCollabLayerRows = ko.pureComputed(() => {
+        const q = self.collabLayerSearch().trim().toLowerCase();
+        const rows = self.collabLayerRows();
+        if (!q) return rows;
+        return rows.filter(row => row.name.toLowerCase().includes(q));
+    });
+
+    // Precomputed (rather than a ternary in the data-bind attribute)
+    // because knockout-secure-binding's expression grammar doesn't support
+    // the conditional (?:) operator.
+    self.noLayersMessage = ko.pureComputed(() =>
+        self.collabLayers().length === 0
+            ? "You haven't subscribed to any layers yet — create one above, or find one to subscribe to below."
+            : '');
+
+    // Single computed driving both the visible condition and the message
+    // text -- avoids two separate bindings on the same element (a compound
+    // `visible` expression plus a `text:` interpolation) rendering
+    // inconsistently with each other for a frame.
+    self.noSearchMatchMessage = ko.pureComputed(() => {
+        const q = self.collabLayerSearch().trim();
+        if (!q || self.collabLayers().length === 0 || self.filteredCollabLayerRows().length > 0) return '';
+        return `No layers match "${q}".`;
+    });
+
+    // ── Find a layer (discover/subscribe) ──
+    // No HQ picked means "search all HQs" -- not "search nothing" -- so
+    // this always fetches something, scoped server-side when an HQ is
+    // picked (see lambda listLayers.js's hqId param) or unfiltered when not.
+    self.runDiscoverSearch = async () => {
+        if (!deps.apiUrl) {
+            self.discoverResults([]);
+            return;
+        }
+        self.discoverError('');
+        self.discoverLoading(true);
+        try {
+            const hqId = self.discoverHqPicker.selected()?.id;
+            self.discoverResults(await searchLayersForHq(deps.apiUrl, deps.getToken, hqId));
+        } catch (err) {
+            console.error('Error searching layers:', err);
+            self.discoverError('Failed to search layers. Try again later.');
+            self.discoverResults([]);
+        } finally {
+            self.discoverLoading(false);
+        }
+    };
+    self.discoverHqPicker.selected.subscribe(() => self.runDiscoverSearch());
+
+    // Debounced re-poll on every name filter keystroke too (same 250ms
+    // shape as makeEventPicker/makeHqPicker above) -- discoverResults is a
+    // point-in-time snapshot, so without this, a layer someone else creates
+    // or renames mid-search stays invisible/stale until the HQ picker is
+    // touched again. discoverRows below still does the actual name
+    // narrowing client-side (the lambda has no name param), this just keeps
+    // the underlying snapshot fresh while the user types.
+    let discoverSearchTimer = null;
+    self.discoverSearch.subscribe(() => {
+        if (discoverSearchTimer) clearTimeout(discoverSearchTimer);
+        discoverSearchTimer = setTimeout(self.runDiscoverSearch, 250);
+    });
+
+    self.discoverRows = ko.pureComputed(() => {
+        const subscribedIds = new Set(self.collabLayers().map(l => l.id));
+        const q = self.discoverSearch().trim().toLowerCase();
+        return self.discoverResults()
+            .filter(layer => !q || (layer.name || '').toLowerCase().includes(q))
+            .slice()
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+            .map(layer => {
+                const drow = {
+                    layer,
+                    name: layer.name,
+                    markerCount: layer.markerCount || 0,
+                    lastUsedLabel: relativeTime(layer.lastUsedAt),
+                    // hqName is shown per-row since browsing can span every
+                    // HQ at once (no HQ picked -- see runDiscoverSearch above).
+                    hqName: layer.hqName || null,
+                    eventName: layer.eventName || null,
+                    // Precomputed (rather than a ternary in the data-bind
+                    // attribute) because knockout-secure-binding's
+                    // expression grammar doesn't support the conditional
+                    // (?:) operator.
+                    eventLabel: layer.eventName
+                        ? (layer.eventIdentifier ? `${layer.eventIdentifier} — ${layer.eventName}` : layer.eventName)
+                        : null,
+                    alreadySubscribed: subscribedIds.has(layer.id),
+                    subscribing: ko.observable(false),
+                    // layer.createdBy is a raw Beacon person id -- resolved
+                    // asynchronously (and cached) to a display name via
+                    // root.resolvePersonName, same as collabLayerRows above.
+                    authorName: ko.observable(''),
+                };
+                if (layer.createdBy && root.resolvePersonName) {
+                    root.resolvePersonName(layer.createdBy).then(name => drow.authorName(name));
+                }
+                return drow;
+            });
+    });
+
+    // Precomputed (rather than a ternary in the data-bind attribute)
+    // because knockout-secure-binding's expression grammar doesn't support
+    // the conditional (?:) operator.
+    self.discoverEmptyMessage = ko.pureComputed(() => {
+        if (self.discoverLoading() || self.discoverRows().length > 0) return '';
+        const hq = self.discoverHqPicker.selected();
+        return hq ? `No layers found for ${hq.name}.` : 'No layers found.';
+    });
+
+    self.subscribeToDiscoverRow = (discoverRow) => {
+        if (discoverRow.alreadySubscribed || discoverRow.subscribing()) return;
+        discoverRow.subscribing(true);
+        try {
+            subscribeToLayer(root, deps.apiUrl, discoverRow.layer, deps.actorId, deps.getToken, deps.getMemberId);
+        } finally {
+            discoverRow.subscribing(false);
+        }
+    };
+
+    self.unsubscribeLayer = (row) => {
+        unsubscribeFromLayer(root, row.layer.id);
+    };
+
+    // Shared by a successful create and an explicit Cancel -- closes the
+    // form and puts it back to its just-opened state, ready for next time.
+    // HQ resets to the resolved default (not empty), since reopening the
+    // form later is almost always for the same HQ; everything else resets
+    // to its "no customisation" default.
+    function resetNewLayerForm() {
+        self.newLayerName('');
+        self.newLayerMarkerMode('anyone');
+        self.newLayerDeleteMode('anyone');
+        self.newLayerCommentMode('anyone');
+        self.newLayerModeratorPicker.reset([]);
+        self.newLayerEventPicker.reset(null);
+        self.newLayerHqPicker.reset(self.defaultHq());
+        self.showCreateLayerForm(false);
+    }
+
+    self.cancelCreateLayer = () => {
+        self.collabLayerError('');
+        resetNewLayerForm();
+    };
+
+    self.createCollabLayer = async () => {
+        const name = self.newLayerName().trim();
+        const hq = self.newLayerHqPicker.selected();
+        if (!name || !deps.apiUrl) return;
+        if (!hq) {
+            self.collabLayerError('An HQ is required -- search for one above.');
+            return;
+        }
+
+        self.collabLayerError('');
+        self.creatingCollabLayer(true);
+        try {
+            const permissions = {
+                markerMode: self.newLayerMarkerMode(),
+                deleteMode: self.newLayerDeleteMode(),
+                commentMode: self.newLayerCommentMode(),
+                moderators: self.newLayerModeratorPicker.moderators(),
+                event: self.newLayerEventPicker.selected(),
+                hq,
+            };
+            const layer = await createCollabLayer(root, deps.apiUrl, name, deps.actorId, deps.getToken, permissions, deps.getMemberId);
+            if (!layer) throw new Error('Create failed');
+            self.creatingCollabLayer(false);
+            // Hold the button in its success state briefly so the user
+            // actually sees it succeed, rather than the form vanishing the
+            // instant the request resolves.
+            self.collabLayerCreated(true);
+            await new Promise((resolve) => setTimeout(resolve, 900));
+            self.collabLayerCreated(false);
+            resetNewLayerForm();
+        } catch (err) {
+            console.error('Error creating collaborative layer:', err);
+            self.collabLayerError('Failed to create layer. Try again later.');
+            self.creatingCollabLayer(false);
+        }
+    };
+
+    // Re-pulls "My layers" from the server -- picks up any changes to
+    // layers this user is subscribed to since this page loaded
+    // (createCollabLayer above only accounts for layers *this* session
+    // created/subscribed to).
+    self.refreshCollabLayers = async () => {
+        if (!deps.apiUrl || self.refreshingCollabLayers()) return;
+
+        self.collabLayerError('');
+        self.refreshingCollabLayers(true);
+        try {
+            await refreshSubscribedLayers(root, deps.apiUrl, deps.actorId, deps.getToken, deps.getMemberId);
+        } catch (err) {
+            console.error('Error refreshing collaborative layers:', err);
+            self.collabLayerError('Failed to refresh layer list. Try again later.');
+        } finally {
+            self.refreshingCollabLayers(false);
+        }
+    };
+
+    // Actual delete, fired from row.confirmDeleteLayer above once the user
+    // has clicked through the row's inline confirm step (same two-step
+    // pattern as a marker's own delete confirm in collabLayer.js).
+    self.deleteCollabLayer = async (row) => {
+        if (!deps.apiUrl || self.deletingCollabLayerId()) return;
+
+        self.collabLayerError('');
+        self.deletingCollabLayerId(row.layer.id);
+        try {
+            const ok = await deleteCollabLayer(root, deps.apiUrl, row.layer.id, deps.actorId, deps.getToken);
+            if (!ok) throw new Error('Delete failed');
+        } catch (err) {
+            console.error('Error deleting collaborative layer:', err);
+            self.collabLayerError('Failed to delete layer. Try again later.');
+            row.confirmingDelete(false);
+        } finally {
+            self.deletingCollabLayerId(null);
+        }
+    };
+
+    // Saves a row's in-progress marker/delete/comment mode radios, its
+    // in-progress HQ/event pickers, *and* its in-progress moderator picker
+    // (all edited together in #collabPermissionsModal) as the layer's new
+    // permissions, attachment and moderator list, fired from
+    // row.savePermissions above. Only rows the creator or a current
+    // moderator can manage ever get the "Manage permissions" control exposed
+    // (see collabLayerRows' canManagePermissions), so there's no separate
+    // authorization check needed here -- the Lambda enforces it
+    // authoritatively either way. Three independent PUTs (permissions,
+    // attachment and moderators are separate Lambda routes/S3 fields) fired
+    // together so one Save click covers everything the modal edits; any can
+    // fail on its own, in which case the modal stays open with the error
+    // shown rather than silently discarding whichever part didn't make it.
+    self.saveRowPermissions = async (row) => {
+        if (!deps.apiUrl || !row.canManagePermissions || row.savingPermissions()) return;
+        if (row.hqEditPicker && !row.hqEditPicker.selected()) {
+            row.permissionsError('An HQ is required.');
+            return;
+        }
+
+        row.permissionsError('');
+        row.savingPermissions(true);
+        try {
+            const permissions = {
+                markerMode: row.editMarkerMode(),
+                deleteMode: row.editDeleteMode(),
+                commentMode: row.editCommentMode(),
+            };
+            const [savedPermissions, savedAttachment, savedModerators] = await Promise.all([
+                updateCollabLayerPermissions(root, deps.apiUrl, row.layer.id, permissions, deps.getToken),
+                updateCollabLayerAttachment(root, deps.apiUrl, row.layer.id, {
+                    hq: row.hqEditPicker.selected(),
+                    event: row.eventEditPicker.selected(),
+                }, deps.getToken),
+                updateCollabLayerModerators(root, deps.apiUrl, row.layer.id, row.moderatorPicker.moderators(), deps.getToken),
+            ]);
+            if (savedPermissions == null || savedAttachment == null || savedModerators == null) throw new Error('Update failed');
+            // All three update calls mutate row.layer's fields in place
+            // (it's the same object reference held in
+            // self.collabLayers()) -- force collabLayerRows to recompute so
+            // this row (and its canDelete/lock badges, HQ/event labels and
+            // moderator badges) reflects the new values immediately, same
+            // as a poll-driven refresh would.
+            self.collabLayers.valueHasMutated();
+            // Only close on success -- an error leaves the modal open (with
+            // permissionsError shown) so the user can see what went wrong
+            // and retry, rather than the failure vanishing along with the
+            // modal's content.
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('collabPermissionsModal')).hide();
+        } catch (err) {
+            console.error('Error updating layer permissions:', err);
+            row.permissionsError('Failed to save changes. Try again later.');
+        } finally {
+            row.savingPermissions(false);
+        }
+    };
+
+    // Named methods (rather than inline functions in data-bind attributes)
+    // because knockout-secure-binding's restricted grammar doesn't support
+    // control-flow statements like `if` inside inline function literals.
+    self.handleNewLayerNameKeydown = (data, event) => {
+        if (event.key === 'Enter') self.createCollabLayer();
+        return true;
+    };
+
     self.fetchPeriod = ko.observable(7).extend({ min: 0, max: 31, digit: true });
     self.fetchForward = ko.observable(0).extend({ min: 0, max: 31, digit: true });
-    self.showAdvanced = ko.observable(false);
-    self.darkMode = ko.observable(false);
 
-    self.layoutPresetDefs = [
-        {
-            id: 'map-right-teams-top',
-            name: 'Map Right · Teams Top',
-            description: 'Teams above tasking in the sidebar, map on the right.',
-            previewClass: 'preset-map-right-teams-top'
-        },
-        {
-            id: 'map-right-tasking-top',
-            name: 'Map Right · Tasking Top',
-            description: 'Tasking above teams in the sidebar, map on the right.',
-            previewClass: 'preset-map-right-tasking-top'
-        },
-        {
-            id: 'map-left-teams-top',
-            name: 'Map Left · Teams Top',
-            description: 'Map on the left with teams above tasking on the right.',
-            previewClass: 'preset-map-left-teams-top'
-        },
-        {
-            id: 'map-left-tasking-top',
-            name: 'Map Left · Tasking Top',
-            description: 'Map on the left with tasking above teams on the right.',
-            previewClass: 'preset-map-left-tasking-top'
-        },
-        {
-            id: 'map-right-teams-only',
-            name: 'Map Right · Teams Only',
-            description: 'Hide tasking pane, keep teams + map.',
-            previewClass: 'preset-map-right-teams-only'
-        },
-        {
-            id: 'map-right-tasking-only',
-            name: 'Map Right · Tasking Only',
-            description: 'Hide teams pane, keep tasking + map.',
-            previewClass: 'preset-map-right-tasking-only'
-        },
-        {
-            id: 'map-left-teams-only',
-            name: 'Map Left · Teams Only',
-            description: 'Map left with teams-only pane on the right.',
-            previewClass: 'preset-map-left-teams-only'
-        },
-        {
-            id: 'map-left-tasking-only',
-            name: 'Map Left · Tasking Only',
-            description: 'Map left with tasking-only pane on the right.',
-            previewClass: 'preset-map-left-tasking-only'
-        },
-        {
-            id: 'map-only',
-            name: 'Map Only',
-            description: 'Hide both sidebar panes and use the full map view.',
-            previewClass: 'preset-map-only'
-        }
+    // Human-readable summary of what the Data pane's knobs currently resolve
+    // to -- shown alongside the inputs so an operator can sanity-check the
+    // window they're actually loading.
+    const _fmtWindowDate = (d) => d.toLocaleDateString('en-AU', {
+        weekday: 'short', day: 'numeric', month: 'short'
+    });
+    self.fetchWindowRange = ko.pureComputed(() => {
+        const back = Math.max(0, Number(self.fetchPeriod()) || 0);
+        const fwd = Math.max(0, Number(self.fetchForward()) || 0);
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + fwd);
+        return `${_fmtWindowDate(start)} → ${_fmtWindowDate(end)}`;
+    });
+    self.fetchWindowDays = ko.pureComputed(() => {
+        const back = Math.max(0, Number(self.fetchPeriod()) || 0);
+        const fwd = Math.max(0, Number(self.fetchForward()) || 0);
+        return back + fwd + 1;
+    });
+    self.refreshCadence = ko.pureComputed(() => {
+        const s = Math.max(0, Number(self.refreshInterval()) || 0);
+        if (s < 90) return `every ${s} sec`;
+        return `every ${Math.round(s / 60)} min`;
+    });
+    self.liveUpdatesLabel = ko.pureComputed(() => (self.signalrEnabled() ? 'On' : 'Off'));
+
+    // The full refresh means different things depending on whether live updates
+    // are carrying the load -- spell it out so nobody sets it wrong.
+    self.fullRefreshHint = ko.pureComputed(() => (self.signalrEnabled()
+        ? 'A full reload from Beacon. With live updates on it is only a backstop — every 3–5 min is plenty.'
+        : 'A full reload from Beacon. With live updates off this is the only thing refreshing the board — keep it short, 1–2 min.'
+    ));
+    self.dataReadoutNote = ko.pureComputed(() => (self.signalrEnabled()
+        ? 'Live updates keep the board current; the full refresh is a backstop.'
+        : 'No live updates — the board is only as fresh as the full refresh.'
+    ));
+
+    // Data pane -- one-tap presets for the values these are actually set to.
+    // The number field beside each row stays as the escape hatch for odd
+    // values; an off-preset value simply leaves no preset highlighted.
+    self.refreshPresets = [
+        { value: 30, label: '30s' },
+        { value: 60, label: '1 min' },
+        { value: 120, label: '2 min' },
+        { value: 180, label: '3 min' },
+        { value: 300, label: '5 min' },
+        { value: 600, label: '10 min' }
     ];
+    self.historyPresets = [
+        { value: 0, label: 'Today' },
+        { value: 1, label: '1 day' },
+        { value: 3, label: '3 days' },
+        { value: 7, label: '1 week' },
+        { value: 14, label: '2 weeks' },
+        { value: 31, label: '1 month' }
+    ];
+    self.lookaheadPresets = [
+        { value: 0, label: 'None' },
+        { value: 1, label: '1 day' },
+        { value: 3, label: '3 days' },
+        { value: 7, label: '1 week' }
+    ];
+    self.pickRefreshPreset = (p) => self.refreshInterval(p.value);
+    self.pickHistoryPreset = (p) => self.fetchPeriod(p.value);
+    self.pickLookaheadPreset = (p) => self.fetchForward(p.value);
+
+    self.showAdvanced = ko.observable(false);
+
+    // Theme: 'light' | 'dark' | 'auto'. 'auto' (the default) follows the
+    // OS/browser prefers-color-scheme and re-applies live when it changes.
+    self.darkModeMode = ko.observable('auto');
+    const _darkMq = (typeof window !== 'undefined' && window.matchMedia)
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null;
+    self.systemPrefersDark = ko.observable(!!(_darkMq && _darkMq.matches));
+    if (_darkMq) {
+        const _onSchemeChange = (e) => self.systemPrefersDark(!!e.matches);
+        if (_darkMq.addEventListener) _darkMq.addEventListener('change', _onSchemeChange);
+        else if (_darkMq.addListener) _darkMq.addListener(_onSchemeChange); // older Safari
+    }
+    // Effective boolean -- what the rest of the app reads. Reactive to both
+    // the chosen mode and (in 'auto') the live OS setting.
+    self.darkMode = ko.pureComputed(() => {
+        const m = self.darkModeMode();
+        return m === 'dark' || (m === 'auto' && self.systemPrefersDark());
+    });
+    self.themeModes = [
+        { value: 'light', label: 'Light' },
+        { value: 'dark', label: 'Dark' },
+        { value: 'auto', label: 'Auto' }
+    ];
+    self.pickThemeMode = (m) => self.darkModeMode(m.value);
+    self.themeHint = ko.pureComputed(() => {
+        if (self.darkModeMode() === 'auto') {
+            return `Follows your device's light / dark setting — currently ${self.darkMode() ? 'dark' : 'light'}.`;
+        }
+        return 'A low-glare dark colour scheme for the whole board and map.';
+    });
+
+    // Spotlight Search hotkey. `null` means "use the
+    // built-in Cmd/Ctrl+K default" -- see utils/hotkeyMatch.js for the
+    // combo shape and matching/formatting logic shared with main.js.
+    const _isMac = isMacPlatform();
+    self.spotlightHotkey = ko.observable(null);
+    self.spotlightHotkeyCapturing = ko.observable(false);
+    self.spotlightHotkeyError = ko.observable(null);
+    self.spotlightHotkeyLabel = ko.pureComputed(() => formatHotkeyCombo(self.spotlightHotkey(), _isMac));
+    self.spotlightHotkeyButtonLabel = ko.pureComputed(() => (
+        self.spotlightHotkeyCapturing() ? 'Press a key combo…' : self.spotlightHotkeyLabel()
+    ));
+    self.startCaptureSpotlightHotkey = () => {
+        self.spotlightHotkeyError(null);
+        self.spotlightHotkeyCapturing(true);
+    };
+    self.cancelCaptureSpotlightHotkey = () => {
+        self.spotlightHotkeyCapturing(false);
+        self.spotlightHotkeyError(null);
+    };
+    self.resetSpotlightHotkey = () => {
+        self.spotlightHotkey(null);
+        self.spotlightHotkeyCapturing(false);
+        self.spotlightHotkeyError(null);
+        self.save();
+    };
+    self.onSpotlightHotkeyCapture = (_vm, e) => {
+        if (!self.spotlightHotkeyCapturing()) return true;
+        e.preventDefault();
+        if (e.key === 'Escape') {
+            self.cancelCaptureSpotlightHotkey();
+            return false;
+        }
+        if (isModifierKey(e.key)) return false;
+        const combo = captureComboFromEvent(e);
+        if (!hasModifier(combo)) {
+            self.spotlightHotkeyError('Include Ctrl, Cmd, or Alt so it doesn\'t clash with normal typing.');
+            return false;
+        }
+        self.spotlightHotkey(combo);
+        self.spotlightHotkeyCapturing(false);
+        self.spotlightHotkeyError(null);
+        self.save();
+        return false;
+    };
+
     self.layoutPreset = ko.observable(DEFAULT_LAYOUT_PRESET);
+
+    // The Layout tab picks the preset as two choices: the map's side and how
+    // the side drawer shows the lists (see utils/layoutPreset.js). 'Map only'
+    // has no side, so the last side picked is kept for when lists come back.
+    let lastLayoutSide = splitLayoutPreset(DEFAULT_LAYOUT_PRESET).side || 'right';
+    self.layoutSide = ko.pureComputed({
+        read: () => splitLayoutPreset(self.layoutPreset()).side || lastLayoutSide,
+        write: (side) => {
+            lastLayoutSide = side;
+            self.layoutPreset(joinLayoutPreset(side, splitLayoutPreset(self.layoutPreset()).lists));
+        },
+    });
+    self.layoutLists = ko.pureComputed({
+        read: () => splitLayoutPreset(self.layoutPreset()).lists,
+        write: (lists) => self.layoutPreset(joinLayoutPreset(self.layoutSide(), lists)),
+    });
+    self.layoutSideEnabled = ko.pureComputed(() => self.layoutLists() !== 'none');
+    self.layoutMapLeft = ko.pureComputed({
+        read: () => self.layoutSide() === 'left',
+        write: (left) => self.layoutSide(left ? 'left' : 'right'),
+    });
+    // The Layout tab's tiles: each one's thumbnail follows the map side.
+    self.layoutListChoices = [
+        ['teams-top', 'Teams on top'],
+        ['tasking-top', 'Incidents on top'],
+        ['tabbed', 'Tabs'],
+        ['teams-only', 'Teams only'],
+        ['tasking-only', 'Incidents only'],
+        ['none', 'Map only'],
+    ].map(([id, name]) => ({
+        id,
+        name,
+        previewClass: ko.pureComputed(() => `preset-${joinLayoutPreset(self.layoutSide(), id)}`),
+    }));
 
     //blown away on load
     self.teamStatusFilter = ko.observableArray([]);
@@ -262,12 +1414,53 @@ export function ConfigVM(root, deps) {
 
     self.teamTaskStatusFilter = ko.observableArray([]);
 
+    // Team type allow-list (Field / Operations / Aviation). Empty = all types.
+    // blown away on load
+    self.teamTypeFilter = ko.observableArray([]);
+
     // Map clustering
     self.clusterEnabled = ko.observable(true);
     self.clusterRadius = ko.observable(60);   // maxClusterRadius in px (10–80)
     self.clusterRescueJobs = ko.observable(true);
+    self.showJobStatusOnMarkers = ko.observable(true);
+    // Swing overlapping asset pins apart around their positions.
+    self.assetPinDeclutter = ko.observable(true);
+    // ...from this zoom level in (13-18)...
+    self.assetPinDeclutterMinZoom = ko.observable(15);
+    // ...and whether crowded pins may move out on lines.
+    self.assetPinAllowLines = ko.observable(true);
+    // Capability code (HRV, MSV, CFR...) in a tab on top of each asset pin.
+    self.showAssetCapabilityCodes = ko.observable(true);
+    // Breadcrumb trail for the selected asset, and how many minutes back
+    // (15-120: fixes come at most every 5 minutes, so shorter shows nothing).
+    self.assetTrails = ko.observable(true);
+    self.assetTrailMinutes = ko.observable(30);
+    self.assetTrailMinutesLabel = ko.pureComputed(() => {
+        const m = Number(self.assetTrailMinutes());
+        if (m < 60) return `${m} minutes`;
+        const h = m / 60;
+        return `${h} hour${h === 1 ? '' : 's'}`;
+    });
+    // What you see at each zoom, for the slider's readout.
+    const ZOOM_LABELS = { 13: 'suburbs', 14: 'neighbourhoods', 15: 'streets', 16: 'street detail', 17: 'buildings', 18: 'close-up' };
+    self.assetPinDeclutterZoomLabel = ko.pureComputed(() => {
+        const z = Number(self.assetPinDeclutterMinZoom());
+        return `zoom ${z} (${ZOOM_LABELS[z] || ''})`;
+    });
+    const assetPinOptions = () => ({
+        minZoom: Number(self.assetPinDeclutterMinZoom()) || 15,
+        allowLines: !!self.assetPinAllowLines(),
+    });
     self.alertsCollapsibleRules = ko.observable(true);
+    // Low-priority alert when a Tasked/Enroute team's radio is within this
+    // many metres of its incident (utils/onsiteGeofence.js).
+    self.onsiteGeofenceAlert = ko.observable(true);
+    self.onsiteGeofenceMetres = ko.observable(ONSITE_GEOFENCE_DEFAULT_METRES);
     self.taskingCountActiveOnly = ko.observable(false);
+
+    // On/Off pill labels for the Appearance pane switches
+    self.alertsCollapseLabel = ko.pureComputed(() => (self.alertsCollapsibleRules() ? 'On' : 'Off'));
+    self.taskingCountLabel = ko.pureComputed(() => (self.taskingCountActiveOnly() ? 'On' : 'Off'));
 
     // pinned rows
     self.pinnedTeamIds = ko.observableArray([]);
@@ -316,11 +1509,7 @@ export function ConfigVM(root, deps) {
 
     // Dark mode helper (defined early so it can be called in afterConfigLoad)
     self._applyDarkMode = () => {
-        if (self.darkMode()) {
-            document.body.classList.add('dark-mode');
-        } else {
-            document.body.classList.remove('dark-mode');
-        }
+        document.body.classList.toggle('dark-mode', self.darkMode());
     };
 
 
@@ -346,6 +1535,10 @@ export function ConfigVM(root, deps) {
 
     self.teamStatusFilterDefaults = [
         "Activated"
+    ];
+
+    self.teamTypeFilterDefaults = [
+        "Field"
     ];
 
     self.incidentTypeFilterDefaults = [
@@ -374,11 +1567,17 @@ export function ConfigVM(root, deps) {
 
     // Build the current config payload (used by save + share)
     const buildConfig = () => ({
-        refreshInterval: Number(self.refreshInterval()),
+        // Renamed from refreshInterval so existing saved configs (which
+        // only have the old key) fall through to the new default instead
+        // of carrying forward the old 60s value.
+        refreshIntervalV2: Number(self.refreshInterval()),
+        signalrEnabled: !!self.signalrEnabled(),
         fetchPeriod: Number(self.fetchPeriod()),
         fetchForward: Number(self.fetchForward()),
         showAdvanced: !!self.showAdvanced(),
-        darkMode: !!self.darkMode(),
+        darkModeMode: self.darkModeMode(),
+        // kept so a config saved here still reads sensibly on an older build
+        darkMode: self.darkModeMode() === 'dark',
         layoutPreset: normalizeLayoutPreset(self.layoutPreset()),
         locationFilters: {
             teams: ko.toJS(self.teamFilters),
@@ -389,17 +1588,28 @@ export function ConfigVM(root, deps) {
         jobStatusFilter: ko.toJS(self.jobStatusFilter),
         incidentTypeFilter: ko.toJS(self.incidentTypeFilter),
         teamTaskStatusFilter: ko.toJS(self.teamTaskStatusFilter),
+        teamTypeFilter: ko.toJS(self.teamTypeFilter),
         sectorFilters: ko.toJS(self.sectorFilters),
         includeIncidentsWithoutSector: !!self.includeIncidentsWithoutSector(),
         applySectorsToIncidents: !!self.applySectorsToIncidents(),
         applySectorsToTeams: !!self.applySectorsToTeams(),
         pinnedTeamIds: ko.toJS(self.pinnedTeamIds),
         pinnedIncidentIds: ko.toJS(self.pinnedIncidentIds),
-        paneOrder: self.paneOrder().map(p => p.id),
+        layerStack: stackIds.slice(),
+        layerOpacity: { ...stackOpacity },
         clusterEnabled: !!self.clusterEnabled(),
         clusterRadius: Number(self.clusterRadius()) || 60,
         clusterRescueJobs: !!self.clusterRescueJobs(),
+        showJobStatusOnMarkers: !!self.showJobStatusOnMarkers(),
+        assetPinDeclutter: !!self.assetPinDeclutter(),
+        assetPinDeclutterMinZoom: Number(self.assetPinDeclutterMinZoom()) || 15,
+        assetPinAllowLines: !!self.assetPinAllowLines(),
+        assetTrails: !!self.assetTrails(),
+        showAssetCapabilityCodes: !!self.showAssetCapabilityCodes(),
+        assetTrailMinutes: Number(self.assetTrailMinutes()) || 30,
         alertsCollapsibleRules: !!self.alertsCollapsibleRules(),
+        onsiteGeofenceAlert: !!self.onsiteGeofenceAlert(),
+        onsiteGeofenceMetres: Number(self.onsiteGeofenceMetres()) || ONSITE_GEOFENCE_DEFAULT_METRES,
         taskingCountActiveOnly: !!self.taskingCountActiveOnly(),
         suggestionEnabled: !!self.suggestionEnabled(),
         rescueDistanceWeight: Number(self.rescueDistanceWeight()) || 0,
@@ -407,6 +1617,7 @@ export function ConfigVM(root, deps) {
         normalDistanceWeight: Number(self.normalDistanceWeight()) || 0,
         normalTaskingWeight: Number(self.normalTaskingWeight()) || 0,
         suggestionUseRouting: !!self.suggestionUseRouting(),
+        spotlightHotkey: self.spotlightHotkey() ? { ...self.spotlightHotkey() } : null,
     });
 
     // Helpers
@@ -435,8 +1646,8 @@ export function ConfigVM(root, deps) {
     };
     const removeById = (arr, id) => arr.remove(x => x.id === id);
 
-    self.clearTeams = () => self.teamFilters.removeAll();
-    self.clearIncidents = () => self.incidentFilters.removeAll();
+    self.clearTeams = () => { self.teamFilters.removeAll(); self.teamsExpanded(false); };
+    self.clearIncidents = () => { self.incidentFilters.removeAll(); self.incidentsExpanded(false); };
     self.clearSectors = () => self.sectorFilters.removeAll();
 
     // Search (debounced)
@@ -609,7 +1820,8 @@ export function ConfigVM(root, deps) {
         if (!cfg) {
             cfg = {}
             console.log('Using defaults.');
-            cfg.refreshInterval = self.refreshInterval();
+            cfg.refreshIntervalV2 = self.refreshInterval();
+            cfg.signalrEnabled = self.signalrEnabled();
             cfg.fetchPeriod = self.fetchPeriod();
             cfg.fetchForward = self.fetchForward();
             cfg.showAdvanced = self.showAdvanced();
@@ -617,6 +1829,7 @@ export function ConfigVM(root, deps) {
             cfg.jobStatusFilter = self.jobStatusFilterDefaults;
             cfg.incidentTypeFilter = self.incidentTypeFilterDefaults;
             cfg.teamTaskStatusFilter = self.teamTaskStatusFilterDefaults;
+            cfg.teamTypeFilter = self.teamTypeFilterDefaults;
             cfg.sectorFilters = [];
             cfg.includeIncidentsWithoutSector = true;
             cfg.applySectorsToIncidents = false;
@@ -639,9 +1852,17 @@ export function ConfigVM(root, deps) {
             }
         }
         // scalar settings
-        if (typeof cfg.refreshInterval === 'number') {
-            self.refreshInterval(cfg.refreshInterval);
-            lastRefreshInterval = cfg.refreshInterval;
+        // refreshIntervalV2 (renamed from refreshInterval) -- existing saved
+        // configs only have the old key, so this is undefined for them and
+        // self.refreshInterval just keeps its constructor default (180).
+        // Only someone who saves again under the new build will persist a
+        // value here, at which point it's their own deliberate choice again.
+        if (typeof cfg.refreshIntervalV2 === 'number') {
+            self.refreshInterval(cfg.refreshIntervalV2);
+            lastRefreshInterval = cfg.refreshIntervalV2;
+        }
+        if (typeof cfg.signalrEnabled === 'boolean') {
+            self.signalrEnabled(cfg.signalrEnabled);
         }
         if (typeof cfg.fetchPeriod === 'number') {
             self.fetchPeriod(cfg.fetchPeriod);
@@ -652,8 +1873,13 @@ export function ConfigVM(root, deps) {
         if (typeof cfg.showAdvanced === 'boolean') {
             self.showAdvanced(cfg.showAdvanced);
         }
-        if (typeof cfg.darkMode === 'boolean') {
-            self.darkMode(cfg.darkMode);
+        if (cfg.darkModeMode === 'light' || cfg.darkModeMode === 'dark' || cfg.darkModeMode === 'auto') {
+            self.darkModeMode(cfg.darkModeMode);
+        } else if (cfg.darkMode === true) {
+            // configs saved before the 3-way setting: an explicit `true` was a
+            // deliberate choice -> keep them on Dark. `false` was just the old
+            // default, so let it fall through to 'auto'.
+            self.darkModeMode('dark');
         }
         self.layoutPreset(normalizeLayoutPreset(cfg.layoutPreset || localStorage.getItem('lh.layoutPreset')));
         if (typeof cfg.includeIncidentsWithoutSector === 'boolean') {
@@ -686,6 +1912,13 @@ export function ConfigVM(root, deps) {
         if (Array.isArray(cfg.teamTaskStatusFilter)) {
             self.teamTaskStatusFilter(cfg.teamTaskStatusFilter);
         }
+        // Saved configs from before team-type filtering won't have this key --
+        // fall back to the default (Field only) rather than "all types".
+        if (Array.isArray(cfg.teamTypeFilter)) {
+            self.teamTypeFilter(cfg.teamTypeFilter);
+        } else {
+            self.teamTypeFilter(self.teamTypeFilterDefaults.slice());
+        }
         if (Array.isArray(cfg.sectorFilters)) {
             self.sectorFilters(cfg.sectorFilters);
         }
@@ -697,11 +1930,7 @@ export function ConfigVM(root, deps) {
             self.pinnedIncidentIds(cfg.pinnedIncidentIds.map(x => String(x)));
         }
 
-        if (Array.isArray(cfg.paneOrder)) {
-            self.rebuildPaneOrderFromIds(cfg.paneOrder);
-        } else {
-            self.rebuildPaneOrderFromIds(); // defaults
-        }
+        loadLayerStack(cfg);
 
         if (typeof cfg.clusterEnabled === 'boolean') {
             self.clusterEnabled(cfg.clusterEnabled);
@@ -712,11 +1941,43 @@ export function ConfigVM(root, deps) {
         if (typeof cfg.clusterRescueJobs === 'boolean') {
             self.clusterRescueJobs(cfg.clusterRescueJobs);
         }
+        if (typeof cfg.showJobStatusOnMarkers === 'boolean') {
+            self.showJobStatusOnMarkers(cfg.showJobStatusOnMarkers);
+        }
+        if (typeof cfg.assetPinDeclutter === 'boolean') {
+            self.assetPinDeclutter(cfg.assetPinDeclutter);
+        }
+        if (Number.isInteger(cfg.assetPinDeclutterMinZoom) && cfg.assetPinDeclutterMinZoom >= 13 && cfg.assetPinDeclutterMinZoom <= 18) {
+            self.assetPinDeclutterMinZoom(cfg.assetPinDeclutterMinZoom);
+        }
+        if (typeof cfg.assetPinAllowLines === 'boolean') {
+            self.assetPinAllowLines(cfg.assetPinAllowLines);
+        }
+        if (typeof cfg.assetTrails === 'boolean') {
+            self.assetTrails(cfg.assetTrails);
+        }
+        if (typeof cfg.showAssetCapabilityCodes === 'boolean') {
+            self.showAssetCapabilityCodes(cfg.showAssetCapabilityCodes);
+        }
+        if (Number.isInteger(cfg.assetTrailMinutes) && cfg.assetTrailMinutes >= 15 && cfg.assetTrailMinutes <= 120) {
+            self.assetTrailMinutes(cfg.assetTrailMinutes);
+        }
         if (typeof cfg.alertsCollapsibleRules === 'boolean') {
             self.alertsCollapsibleRules(cfg.alertsCollapsibleRules);
         }
+        if (typeof cfg.onsiteGeofenceAlert === 'boolean') {
+            self.onsiteGeofenceAlert(cfg.onsiteGeofenceAlert);
+        }
+        if (Number.isInteger(cfg.onsiteGeofenceMetres) && cfg.onsiteGeofenceMetres >= ONSITE_GEOFENCE_MIN_METRES && cfg.onsiteGeofenceMetres <= ONSITE_GEOFENCE_MAX_METRES) {
+            self.onsiteGeofenceMetres(cfg.onsiteGeofenceMetres);
+        }
         if (typeof cfg.taskingCountActiveOnly === 'boolean') {
             self.taskingCountActiveOnly(cfg.taskingCountActiveOnly);
+        }
+        if (cfg.spotlightHotkey && typeof cfg.spotlightHotkey.key === 'string') {
+            self.spotlightHotkey({ ...cfg.spotlightHotkey });
+        } else {
+            self.spotlightHotkey(null);
         }
 
         // Instant Task Suggestion Engine weights
@@ -750,10 +2011,11 @@ export function ConfigVM(root, deps) {
 
         try {
             const savedConfig = buildConfig();
+            const token = await deps.getToken();
 
             const res = await fetch(FUNCTION_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({ config: savedConfig })
             });
 
@@ -787,10 +2049,11 @@ export function ConfigVM(root, deps) {
         try {
             // Adjust to match your handler: expects ?id=...
             const url = `${FUNCTION_URL}?id=${encodeURIComponent(id)}`;
+            const token = await deps.getToken();
 
             const res = await fetch(url, {
                 method: "GET",
-                headers: { "Accept": "application/json" }
+                headers: { "Accept": "application/json", "Authorization": `Bearer ${token}` }
             });
 
             if (!res.ok) {
@@ -852,9 +2115,15 @@ export function ConfigVM(root, deps) {
 
     self.afterConfigLoad = () => {
         self._refreshSectors();
-        root.mapVM?.applyPaneOrder?.(self.paneOrder().map(p => p.id));
+        applyLayerStack();
         root.mapVM?.applyClusterRadius?.(Number(self.clusterRadius()) || 60);
         root.mapVM?.applyClusterEnabled?.(!!self.clusterEnabled());
+        root.mapVM?.applyJobStatusOnMarkers?.(!!self.showJobStatusOnMarkers());
+        root.mapVM?.applyAssetPinDeclutter?.(!!self.assetPinDeclutter());
+        root.mapVM?.applyAssetPinDeclutterOptions?.(assetPinOptions());
+        root.mapVM?.applyAssetTrailMinutes?.(Number(self.assetTrailMinutes()) || 30);
+        root.mapVM?.applyAssetTrails?.(!!self.assetTrails());
+        root.mapVM?.applyAssetCapabilityCodes?.(!!self.showAssetCapabilityCodes());
         applyLayoutPresetClass(normalizeLayoutPreset(self.layoutPreset()));
         // Apply dark mode
         self._applyDarkMode();
@@ -886,9 +2155,17 @@ export function ConfigVM(root, deps) {
         root.fetchAllJobsData();
     })
 
-    self.paneOrder.subscribe(() => {
-        root.mapVM?.applyPaneOrder?.(self.paneOrder().map(p => p.id));
-    })
+    // Dragged in the list: fold the new order back into the full saved order.
+    // Rebuilds from stackIds come through here too; they change nothing.
+    self.layerStackRows.subscribe((rows) => {
+        const merged = mergeKnownOrder(stackIds, rows.map(r => r.id));
+        if (merged.join('\n') === stackIds.join('\n')) return;
+        stackIds = merged;
+        applyLayerStack();
+        self.save();
+    });
+    // Overlays register (and collaborative layers come and go) after config loads.
+    root.mapVM?.stackOverlays?.subscribe(() => self.syncLayerStackRows());
 
     self.clusterRadius.subscribe((v) => {
         const r = Math.max(10, Math.min(80, Number(v) || 60));
@@ -906,6 +2183,41 @@ export function ConfigVM(root, deps) {
         self.save();
     })
 
+    self.showJobStatusOnMarkers.subscribe((v) => {
+        root.mapVM?.applyJobStatusOnMarkers?.(!!v);
+        self.save();
+    })
+
+    self.assetPinDeclutter.subscribe((v) => {
+        root.mapVM?.applyAssetPinDeclutter?.(!!v);
+        self.save();
+    })
+
+    self.assetPinDeclutterMinZoom.subscribe(() => {
+        root.mapVM?.applyAssetPinDeclutterOptions?.(assetPinOptions());
+        self.save();
+    })
+
+    self.assetPinAllowLines.subscribe(() => {
+        root.mapVM?.applyAssetPinDeclutterOptions?.(assetPinOptions());
+        self.save();
+    })
+
+    self.assetTrails.subscribe((v) => {
+        root.mapVM?.applyAssetTrails?.(!!v);
+        self.save();
+    })
+
+    self.showAssetCapabilityCodes.subscribe((v) => {
+        root.mapVM?.applyAssetCapabilityCodes?.(!!v);
+        self.save();
+    })
+
+    self.assetTrailMinutes.subscribe((v) => {
+        root.mapVM?.applyAssetTrailMinutes?.(Number(v) || 30);
+        self.save();
+    })
+
     self.alertsCollapsibleRules.subscribe(() => {
         self.save();
     })
@@ -913,6 +2225,9 @@ export function ConfigVM(root, deps) {
     self.taskingCountActiveOnly.subscribe(() => {
         self.save();
     })
+
+    self.onsiteGeofenceAlert.subscribe(() => { self.save(); });
+    self.onsiteGeofenceMetres.subscribe(() => { self.save(); });
 
     // Auto-save suggestion engine settings
     self.suggestionEnabled.subscribe(() => { self.save(); });
@@ -922,17 +2237,17 @@ export function ConfigVM(root, deps) {
     self.normalTaskingWeight.subscribe(() => { self.save(); });
     self.suggestionUseRouting.subscribe(() => { self.save(); });
 
+    // Effective theme changed -- a mode switch, or the OS setting flipping
+    // while in 'auto'. Repaint; don't persist (the OS isn't ours to save).
     self.darkMode.subscribe((isDark) => {
         self._applyDarkMode();
-        
-        // Switch basemap when dark mode changes
         if (root.mapVM?.changeBasemap) {
-            const targetBasemap = isDark ? "DarkGray" : "Topographic";
-            root.mapVM.changeBasemap(targetBasemap);
+            root.mapVM.changeBasemap(isDark ? "DarkGray" : "Topographic");
         }
-        
-        self.save();
     });
+
+    // The user picked Light / Dark / Auto -- persist that choice.
+    self.darkModeMode.subscribe(() => self.save());
 
     self.layoutPreset.subscribe((preset) => {
         const normalized = normalizeLayoutPreset(preset);
@@ -944,19 +2259,42 @@ export function ConfigVM(root, deps) {
         self.save();
     });
 
-    /** Wipe all Lighthouse localStorage keys and reload the page. */
+    // Restore Defaults: pick which groups of LAD's saved state to clear
+    // (utils/resetGroups.js) in their own modal, then reload. Other extension
+    // pages share localStorage, so only LAD's own keys are removed.
+    self.resetGroups = RESET_GROUPS.map(g => ({
+        id: g.id,
+        label: g.label,
+        detail: g.detail,
+        defaultChecked: g.checked,
+        checked: ko.observable(g.checked),
+    }));
+    self.resetAnyChecked = ko.pureComputed(() => self.resetGroups.some(g => g.checked()));
+
+    // Configuration closes while the Restore Defaults modal is open (one
+    // Bootstrap modal at a time) and comes back, unsaved edits and all, on Cancel.
     self.restoreDefaults = () => {
-        if (!confirm(
-            'This will reset ALL settings (filters, layout, map layers, starred items, etc.) to their defaults and reload the page.\n\nContinue?'
-        )) return;
+        self.resetGroups.forEach(g => g.checked(g.defaultChecked));
+        const configEl = document.getElementById('configModal');
+        const resetEl = document.getElementById('restoreDefaultsModal');
+        if (!configEl || !resetEl) return;
+        configEl.addEventListener('hidden.bs.modal', () => {
+            resetEl.addEventListener('hidden.bs.modal', () => {
+                bootstrap.Modal.getOrCreateInstance(configEl).show();
+            }, { once: true });
+            bootstrap.Modal.getOrCreateInstance(resetEl).show();
+        }, { once: true });
+        bootstrap.Modal.getOrCreateInstance(configEl).hide();
+    };
 
-        // Remove every key in localStorage (covers all lh-*, ov.*, layers.*, map.*, etc.)
+    self.confirmReset = () => {
+        const ids = self.resetGroups.filter(g => g.checked()).map(g => g.id);
+        if (!ids.length) return;
+        // A pending trail save would otherwise write them back on pagehide
+        if (ids.includes('trails')) root.mapVM?.assetTrails?.discardPendingSave?.();
         const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            keys.push(localStorage.key(i));
-        }
-        keys.forEach(k => localStorage.removeItem(k));
-
+        for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+        keysToReset(keys, ids).forEach(k => localStorage.removeItem(k));
         location.reload();
     };
 

@@ -1,4 +1,5 @@
 node_modules
+coverage
 temp
 .tmp
 build
@@ -7,8 +8,9 @@ dist
 package
 *.swp
 .env
-
 Lighthouse.zip
 .DS_Store
 *.DS_Store
 package-lock.json
+lambda/myavailability-incident/
+lambda/myavailability-unit-activations/

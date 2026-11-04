@@ -1,5 +1,7 @@
 import L from 'leaflet';
 import ko from 'knockout';
+import { etaClockNow } from '../models/Tasking.js';
+import { findUnmarkedArrivals, ONSITE_GEOFENCE_DEFAULT_METRES } from '../utils/onsiteGeofence.js';
 
 const ruleState = new Map(); // key: rule.id -> { collapsed: boolean, open: boolean, lastCount: number }
 
@@ -42,6 +44,8 @@ function createLeafletControl(L) {
  */
 function renderRules(container, rules, opts = {}) {
   const allowCollapse = opts.allowCollapse !== false;
+  const expandedWidth = '280px';
+  const collapsedWidth = '30px';
   container.style.display = rules.length ? '' : 'none';
 
   // Build a set of active rule IDs so we can remove stale DOM elements
@@ -73,6 +77,34 @@ function renderRules(container, rules, opts = {}) {
 
     if (div) {
       // --- IN-PLACE UPDATE: only patch count + items, preserve all user state ---
+      const levelClasses = ['alerts--warning', 'alerts--danger', 'alerts--caution', 'alerts--info'];
+      div.classList.remove(...levelClasses);
+      div.classList.add(`alerts--${rule.level}`);
+
+      // Re-sync persisted collapsed/open state so transitions do not leave stale classes.
+      if (!allowCollapse) {
+        state.collapsed = false;
+        state.open = true;
+        ruleState.set(rule.id, state);
+      }
+
+      const isCollapsed = !!state.collapsed && allowCollapse;
+      const isOpen = !isCollapsed && !!state.open;
+      div.classList.toggle('alerts--collapsed', isCollapsed);
+      div.classList.toggle('alerts--open', isOpen);
+
+      const body = div.querySelector('.alerts');
+      if (body) body.style.width = isCollapsed ? collapsedWidth : expandedWidth;
+
+      const btn = div.querySelector('.alerts__btn');
+      if (btn) btn.setAttribute('aria-expanded', String(isOpen));
+
+      const hideBtn = div.querySelector('.alerts__hide-btn');
+      if (hideBtn) hideBtn.style.display = allowCollapse ? '' : 'none';
+
+      const titleEl = div.querySelector('.alerts__title');
+      if (titleEl) titleEl.textContent = rule.title;
+
       const countEl = div.querySelector('.alerts__count');
       if (countEl) countEl.textContent = rule.count;
       // keep prominent class in sync
@@ -97,14 +129,14 @@ function renderRules(container, rules, opts = {}) {
     // --- FIRST-TIME CREATION for this rule ---
     div = document.createElement('div');
     div.setAttribute('data-rule-id', rule.id);
-    var width = '280px'
+    let width = expandedWidth;
     div.className = `leaflet-control alerts alerts--${rule.level}`;
     if (rule.prominent) {
       div.classList.add('alerts--prominent');
     }
     if (state.collapsed) {
       div.classList.add('alerts--collapsed');
-      width = "30px"
+      width = collapsedWidth;
     }
     if (!state.collapsed && state.open) {
       div.classList.add('alerts--open');
@@ -143,7 +175,7 @@ function renderRules(container, rules, opts = {}) {
         st.open = true;
         ruleState.set(rule.id, st);
         div.classList.remove('alerts--collapsed');
-        div.querySelector('.alerts').style.width = '280px';
+        div.querySelector('.alerts').style.width = expandedWidth;
 
       }
 
@@ -168,10 +200,10 @@ function renderRules(container, rules, opts = {}) {
         btn.setAttribute('aria-expanded', 'false');
 
         div.querySelector('.alerts').animate(
-          [{ width: '280px' }, { width: '30px' }],
+          [{ width: expandedWidth }, { width: collapsedWidth }],
           { duration: 300, easing: 'ease-in-out' }
         ).onfinish = () => {
-          div.querySelector('.alerts').style.width = '30px';
+          div.querySelector('.alerts').style.width = collapsedWidth;
         };
         div.classList.add('alerts--collapsed');
       });
@@ -274,6 +306,30 @@ function buildDefaultRules(vm) {
       label: `${team.callsign()} — ${matching.length} active: ${breakdown}`
     };
   };
+  // --- teams 5+ min past their ETA/ETC (Tasking.etaOverdueForAlert) ---
+  const overdueTaskings = allTeams.flatMap(team =>
+    (team.filteredTaskings ? team.filteredTaskings() : team.taskings())
+      .filter(t => t.etaOverdueForAlert?.())
+      .map(t => ({ team, t, e: t.etaInfo() }))
+  ).sort((a, b) => b.e.minutesLate - a.e.minutesLate);
+
+  const asOverdueItem = ({ team, t, e }) => ({
+    id: String(team.id()),
+    label: `${team.callsign()} — ${t.job?.identifier?.() ?? '?'} — ${e.label}`
+  });
+  // --- Tasked/Enroute teams whose radio is already at the incident ---
+  const geofenceOn = !!vm.config?.onsiteGeofenceAlert?.();
+  const unmarkedArrivals = geofenceOn
+    ? findUnmarkedArrivals(allTeams, {
+      radiusM: Number(vm.config.onsiteGeofenceMetres?.()) || ONSITE_GEOFENCE_DEFAULT_METRES,
+      nowMs: etaClockNow(), // re-check every 30 s so stale fixes drop out
+    })
+    : [];
+
+  const asArrivalItem = ({ team, tasking, metres }) => ({
+    id: String(team.id()),
+    label: `${team.callsign()} — ${tasking.job?.identifier?.() ?? '?'} (${tasking.currentStatus()}) — ${Math.round(metres)} m away`
+  });
   // --- single summary rule for “alerts hidden because incident isn’t pinned” ---
   let hiddenCount = 0;
   if (pinnedOnlyIncidents) {
@@ -368,6 +424,18 @@ function buildDefaultRules(vm) {
       }
     },
     {
+      id: 'overdue-eta-teams',
+      level: 'warning',
+      title: 'Teams overdue on ETA/ETC',
+      active: overdueTaskings.length > 0,
+      items: overdueTaskings.slice(0, 10).map(asOverdueItem),
+      count: overdueTaskings.length,
+      onClick: (id) => {
+        const found = allTeams.find(t => String(t.id()) === id);
+        found?.focusAndExpandInList?.();
+      }
+    },
+    {
       id: 'multi-enroute-offsite-teams',
       level: 'warning',
       title: 'Teams with multiple Enroute/Offsite/Onsite taskings',
@@ -377,6 +445,20 @@ function buildDefaultRules(vm) {
       onClick: (id) => {
         const found = allTeams.find(t => String(t.id()) === id);
         found?.focusAndExpandInList?.();
+      }
+    },
+    {
+      id: 'unmarked-arrival-teams',
+      level: 'info',
+      title: 'Arrived, not marked Onsite',
+      active: unmarkedArrivals.length > 0,
+      items: unmarkedArrivals.slice(0, 10).map(asArrivalItem),
+      count: unmarkedArrivals.length,
+      onClick: (id) => {
+        // Open the popup of the asset that tripped the geofence
+        const hit = unmarkedArrivals.find(a => String(a.team.id()) === id);
+        if (hit?.asset?.marker) hit.team.flyToAsset(hit.asset);
+        else hit?.team.focusAndExpandInList?.();
       }
     }
   ];

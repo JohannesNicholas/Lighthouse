@@ -1,0 +1,45 @@
+# Dependabot version updates: one grouped PR per ecosystem per week, all
+# targeting master-dev (the integration branch), not master.
+# Note: GitHub always raises *security* update PRs against the repository's
+# default branch (master), regardless of target-branch, and as soon as an
+# advisory is published rather than on this schedule.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/lambda/*"
+    target-branch: "master-dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Australia/Sydney"
+    groups:
+      npm-weekly:
+        patterns: ["*"]
+    ignore:
+      # TypeScript 7 is parked until typescript-eslint supports it (see #516).
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Legacy pages still use Bootstrap 4 + FA5 (rebuilt pages use the
+      # bootstrap5 / fontawesome7 aliases), and Bootstrap 4's JS refuses
+      # jQuery 4. These move with the last legacy page rebuilds (see #606).
+      - dependency-name: "bootstrap"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@fortawesome/fontawesome-free"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jquery"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "master-dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Australia/Sydney"
+    groups:
+      actions-weekly:
+        patterns: ["*"]

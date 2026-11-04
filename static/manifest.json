@@ -17,6 +17,8 @@
     "64":"icons/lighthouse64_dev.png"
   },
   "host_permissions": [
+    "https://beacon-prod-comms.azurewebsites.net/*",
+    "https://beacon-train-comms.azurewebsites.net/*",
     "https://beacon.ses.nsw.gov.au/*",
     "https://trainbeacon.ses.nsw.gov.au/*",
     "https://previewbeacon.ses.nsw.gov.au/*",
@@ -38,12 +40,16 @@
     "https://s3.ap-southeast-2.amazonaws.com/csv-download.ses-mams.net/*",
     "https://api.adsb.lol/v2/*",
     "https://nula.waternsw.com.au/*",
-    "https://services1.arcgis.com/*",
     "https://api.rainviewer.com/*",
     "https://portal.spatial.nsw.gov.au/*"
   ],
+  "optional_host_permissions": [
+    "https://beacon-test-comms.azurewebsites.net/*",
+    "https://beacon-dev-comms.azurewebsites.net/*"
+  ],
   "permissions": [
     "storage",
+    "notifications",
     "webNavigation",
     "scripting"
   ],
@@ -75,7 +81,8 @@
     {
       "matches": [
         "https://*.ses.nsw.gov.au/Jobs?q=*",
-        "https://*.ses.nsw.gov.au/Jobs"
+        "https://*.ses.nsw.gov.au/Jobs",
+        "https://*.ses.nsw.gov.au/jobs"
       ],
       "js": ["contentscripts/jobs/jobs.js"]
     },
@@ -87,6 +94,7 @@
         "https://*.ses.nsw.gov.au/Jobs/Sectors*",
         "https://*.ses.nsw.gov.au/Jobs/*/Edit",
         "https://*.ses.nsw.gov.au/Jobs",
+        "https://*.ses.nsw.gov.au/jobs",
         "https://*.ses.nsw.gov.au/Jobs/Create",
         "https://*.ses.nsw.gov.au/Jobs/Create?*"
       ],
@@ -106,6 +114,7 @@
     {
       "matches": [
         "https://*.ses.nsw.gov.au/Messages/Create",
+        "https://*.ses.nsw.gov.au/messages/create/",
         "https://*.ses.nsw.gov.au/Messages/Create/",
         "https://*.ses.nsw.gov.au/Messages/Create?*"
       ],
@@ -121,7 +130,8 @@
     {
       "matches": [
         "https://*.ses.nsw.gov.au/Teams/Create",
-        "https://*.ses.nsw.gov.au/Teams/Create/"
+        "https://*.ses.nsw.gov.au/Teams/Create/",
+        "https://*.ses.nsw.gov.au/Teams/Create?*"
       ],
       "js": ["contentscripts/teams/create.js"]
     },

@@ -50,7 +50,7 @@ export class JobPopupViewModel {
 
 
 
-    drawRouteToAsset = (tasking) => {
+    drawRouteToAsset = async (tasking) => {
         const from = tasking.getTeamLatLng();
         const to = tasking.getJobLatLng();
         if (!from || !to) {
@@ -58,9 +58,11 @@ export class JobPopupViewModel {
             return;
         }
 
+        const token = await this.api.getToken();
         const router = new AmazonLocationRouter({
-            serviceUrl: "https://lambda.lighthouse-extension.com/lad/route",
+            serviceUrl: "https://lambda.lighthouse-extension.com/lad_v2/route",
             travelMode: "Car",
+            headers: { Authorization: `Bearer ${token}` },
         });
 
         this.routeLoading(true);
@@ -151,9 +153,14 @@ export class JobPopupViewModel {
     }
 
     removeRouteToAsset = () => {
+        this.releaseRouteSubs();
+        this.api.clearRoutes();
+    }
+
+    // Stop following the route's ends, leaving the drawn route alone.
+    releaseRouteSubs = () => {
         this._routeSubs.forEach(sub => sub.dispose());
         this._routeSubs = [];
-        this.api.clearRoutes();
     }
 
     dispose = () => {

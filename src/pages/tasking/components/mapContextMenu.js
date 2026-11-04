@@ -36,14 +36,18 @@ const createJobUrl = (result) => {
 
 export function installMapContextMenu({
     map,
-    geocodeEndpoint = 'https://lambda.lighthouse-extension.com/lad/geocode',
+    geocodeEndpoint = 'https://lambda.lighthouse-extension.com/lad_v2/geocode',
     geocodeMarkerIcon = null,            // pass your defaultSvgIcon if you want
     geocodeRedMarkerIcon = null,         // pass your defaultRedSvgIcon if you want
     geocodeMaxResults = 10,
+    canAddMarker = null,                 // () => boolean -- show/hide the "Add marker" item
+    onAddMarker = null,                  // (latlng) => void -- invoked when it's clicked
+    getToken = null,                     // () => Promise<string> -- Beacon access token
 }) {
     const ctxMenu = document.getElementById("mapContextMenu");
     const btnSearch = document.getElementById("ctxSearchHere");
     const btnGeocode = document.getElementById("ctxGeocodeHere");
+    const btnAddMarker = document.getElementById("ctxAddCollabMarker");
 
     if (!map || !ctxMenu || !btnSearch || !btnGeocode) {
         console.warn("MapContextMenu: missing dependencies or DOM");
@@ -58,6 +62,11 @@ export function installMapContextMenu({
     // Layer for reverse-geocode markers (cleared/replaced each time)
     const geocodeResultsLayer = L.layerGroup().addTo(map);
     const geocodeClickedPointLayer = L.layerGroup().addTo(map);
+    // A click anywhere on the map clears the last reverse-geocode result.
+    map.on('click', () => {
+        geocodeResultsLayer.clearLayers();
+        geocodeClickedPointLayer.clearLayers();
+    });
 
     const hideMenu = () => {
         ctxMenu.style.display = "none";
@@ -67,6 +76,11 @@ export function installMapContextMenu({
         ctxMenu.style.left = `${clientX}px`;
         ctxMenu.style.top = `${clientY}px`;
         ctxMenu.style.display = "block";
+        // Near the right/bottom edge (a narrow map), open towards the point
+        // instead of running off screen.
+        const { width, height } = ctxMenu.getBoundingClientRect();
+        if (clientX + width > window.innerWidth) ctxMenu.style.left = `${Math.max(0, clientX - width)}px`;
+        if (clientY + height > window.innerHeight) ctxMenu.style.top = `${Math.max(0, clientY - height)}px`;
     };
 
     map.on("click zoomstart movestart", hideMenu);
@@ -78,9 +92,24 @@ export function installMapContextMenu({
     map.on("contextmenu", (e) => {
         lastLatLng = e.latlng;
 
+        if (btnAddMarker) {
+            const canAdd = !!canAddMarker?.();
+            btnAddMarker.classList.toggle("disabled", !canAdd);
+            btnAddMarker.disabled = !canAdd;
+            btnAddMarker.title = canAdd
+                ? ""
+                : "Subscribe to a collaborative layer you can add markers to first";
+        }
+
         const p = map.latLngToContainerPoint(e.latlng);
         const rect = map.getContainer().getBoundingClientRect();
         showMenuAt(rect.left + p.x, rect.top + p.y);
+    });
+
+    // ---- ADD MARKER (collaborative layers) ----
+    btnAddMarker?.addEventListener("click", () => {
+        hideMenu();
+        if (lastLatLng) onAddMarker?.(lastLatLng);
     });
 
 
@@ -106,13 +135,6 @@ export function installMapContextMenu({
         hideMenu();
         if (!lastLatLng) return;
 
-        // one-time setup
-        map.on('click', () => {
-            geocodeResultsLayer.clearLayers();
-            geocodeClickedPointLayer.clearLayers();
-        });
-
-
         // clear previous markers
         geocodeResultsLayer.clearLayers();
         geocodeClickedPointLayer.clearLayers();
@@ -130,7 +152,11 @@ export function installMapContextMenu({
             url.searchParams.set('lat', String(lastLatLng.lat));
             url.searchParams.set('lon', String(lastLatLng.lng));
 
-            const res = await fetch(url.toString(), { method: 'GET' });
+            const token = getToken ? await getToken() : null;
+            const res = await fetch(url.toString(), {
+                method: 'GET',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             json = await res.json();
         } catch (e) {
@@ -139,7 +165,7 @@ export function installMapContextMenu({
                 icon: geocodeRedMarkerIcon,
                 pane: 'pane-top-plus',
             })
-                .bindPopup('Reverse geocode failed')
+                .bindPopup('Reverse geocode failed', { pane: 'pane-popup-top' })
                 .addTo(geocodeClickedPointLayer);
             return;
         }
@@ -150,7 +176,7 @@ export function installMapContextMenu({
             icon: geocodeRedMarkerIcon,
             pane: 'pane-top-plus',
         })
-            .bindPopup(`Clicked location<br>${lastLatLng.lat.toFixed(6)}, ${lastLatLng.lng.toFixed(6)}`)
+            .bindPopup(`Clicked location<br>${lastLatLng.lat.toFixed(6)}, ${lastLatLng.lng.toFixed(6)}`, { pane: 'pane-popup-top' })
             .addTo(geocodeClickedPointLayer);
 
 
@@ -229,7 +255,7 @@ export function installMapContextMenu({
             if (shortLine) m.bindTooltip(shortLine, { direction: 'top', sticky: true });
 
             // full details on click
-            m.bindPopup(popupHtml);
+            m.bindPopup(popupHtml, { pane: 'pane-popup-top' });
 
             m.on('popupopen', () => {
                 const popup = m.getPopup();
