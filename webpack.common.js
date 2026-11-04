@@ -24,6 +24,12 @@ const injectScripts = glob.sync('./src/injectscripts/**/*.js')
 const pagesScripts = [
   ...glob.sync('./src/pages/*.js'),
   './src/pages/tasking/main.js',
+  './src/pages/stats/main.js',
+  './src/pages/summary/main.js',
+  './src/pages/advexport/main.js',
+  './src/pages/nitcexport/main.js',
+  './src/pages/simulatedexercise/main.js',
+  './src/pages/radio/main.js',
 ].reduce((acc, path) => {
     const entry = path.replace(/src\/pages\/(.*)\.js/, 'pages/$1');
     acc[entry] = path;
@@ -111,7 +117,8 @@ module.exports = {
     new DotenvPlugin(),
     new ESLintPlugin({
       extensions: ['js', 'ts'],
-      overrideConfigFile: path.resolve(__dirname, '.eslintrc'),
+      configType: 'flat',
+      overrideConfigFile: path.resolve(__dirname, 'eslint.config.mjs'),
     }),
     new CopyPlugin({
       patterns: [

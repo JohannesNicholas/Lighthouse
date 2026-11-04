@@ -1,0 +1,78 @@
+name: Dependency drift
+# Answers "does Lighthouse still work with the newest packages its version
+# ranges allow?" - before a Dependabot PR or a fresh `npm install` finds out
+# the hard way.
+#
+#   - on PRs that touch package.json / package-lock.json (e.g. Dependabot),
+#   - weekly on a schedule,
+#   - on demand.
+#
+# It installs the lockfile, runs `npm update` (newest versions inside the
+# existing ranges, lockfile ignored), then runs the unit + dependency
+# contract tests and the extension build. It never commits anything.
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/dependency-drift.yml
+  schedule:
+    - cron: '23 19 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-in-range:
+    name: Newest in-range packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install (locked)
+        run: npm ci
+      - name: Update to the newest versions allowed by package.json
+        run: |
+          npm update
+          echo '### Packages that moved' >> "$GITHUB_STEP_SUMMARY"
+          git diff --no-color -U0 package-lock.json | grep -E '^\+\s+"version"' | wc -l | xargs -I{} echo "{} lockfile version lines changed" >> "$GITHUB_STEP_SUMMARY"
+          npm outdated || true
+      - name: Dependency contract tests
+        run: npx vitest run src/dependencies
+      - name: Full unit tests
+        run: npm test
+      - name: Build the extension
+        run: npm run dev
+
+  outdated-report:
+    name: Outdated report (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install (locked)
+        run: npm ci
+      - name: npm outdated
+        run: |
+          {
+            echo '### npm outdated'
+            echo '```'
+            npm outdated || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

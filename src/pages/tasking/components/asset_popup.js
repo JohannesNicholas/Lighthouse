@@ -18,6 +18,8 @@ export function buildAssetPopupKO() {
 
       <div data-bind="visible: lastSeenText">
         Last seen:&nbsp;<span data-bind="text: lastSeenText"></span>
+        <span class="sat-icon ms-1"
+           data-bind="visible: isSatellite, css: { 'sat-icon--inactive': !satelliteActive() }, attr: { title: satelliteIconTitle }"><i class="fas fa-satellite"></i><i class="fas fa-slash sat-icon__slash" data-bind="visible: !satelliteActive()"></i></span>
       </div>
 
       <div data-bind="visible: talkgroup">
@@ -25,6 +27,10 @@ export function buildAssetPopupKO() {
         <small data-bind="visible: talkgroupLastUpdatedText">
           &nbsp;(<span data-bind="text: talkgroupLastUpdatedText"></span>)
         </small>
+      </div>
+
+      <div data-bind="visible: isSatellite">
+        Satellite:&nbsp;<strong data-bind="text: satelliteSummary"></strong>
       </div>
 
       <div class="veh-pop__coords text-muted" data-bind="visible: latLngText">
@@ -37,17 +43,17 @@ export function buildAssetPopupKO() {
     <div class="veh-pop__teams" data-bind="visible: matchingTeamsInView && matchingTeamsInView().length">
       <div class="fw-bold small mb-1">Team(s)</div>
 
-      <div class="veh-pop__team-list" data-bind="foreach: { data: matchingTeamsInView, as: 'tm' }">
+      <div class="veh-pop__team-list" data-bind="slideForeach: { data: matchingTeamsInView, as: 'tm' }">
         <div class="veh-pop__team mb-2">
           <!-- Team header row -->
           <div class="d-flex align-items-start justify-content-between">
             <div class="veh-pop__team-title">
               <div class="d-flex align-items-center flex-wrap">
                 <strong class="me-2" data-bind="text: tm.callsign"></strong>
-                <span class="badge bg-light text-dark border small me-1" data-bind="text: tm.statusName"></span>
+                <span class="badge bg-light text-dark border small me-1" data-bind="text: tm.statusName, flashOnChange: tm.statusName"></span>
               </div>
               <div class="text-muted small" data-bind="visible: tm.filteredTaskings() && tm.filteredTaskings().length">
-                Current Taskings: <span data-bind="text: tm.filteredTaskings().length"></span>
+                Current Taskings: <span data-bind="text: tm.filteredTaskings().length, flashTextOnChange: tm.filteredTaskings().length"></span>
               </div>
             </div>
 
@@ -65,7 +71,7 @@ export function buildAssetPopupKO() {
                data-bind="visible: tm.filteredTaskings() && tm.filteredTaskings().length">
             <div class="overflow-auto veh-pop__taskings-list-frame" style="max-height: 200px;">
               <ul class="list-unstyled veh-pop__tasking-list mb-0"
-                  data-bind="foreach: { data: tm.filteredTaskings(), as: 'tsk' }">
+                  data-bind="slideForeach: { data: tm.filteredTaskings(), as: 'tsk' }">
                 <li class="py-1 px-1 mb-1 border rounded small bg-light"
                     data-bind="event: {
                       mouseenter: $root.drawCrowsFliesToJob,
@@ -75,18 +81,22 @@ export function buildAssetPopupKO() {
                   <!-- First row: status, job id, type, priority, time -->
                   <div class="d-flex justify-content-between align-items-start">
                     <div class="me-2">
-                      <span class="badge me-1" data-bind="text: tsk.currentStatus, class: tsk.tagColorFromStatus()"></span>
+                      <span class="badge me-1" data-bind="text: tsk.currentStatus, class: tsk.tagColorFromStatus(), flashOnChange: tsk.currentStatus"></span>
                       <strong data-bind="text: tsk.jobIdentifier + ' - ' +tsk.job.entityAssignedTo.code"></strong>
                       <span class="text-muted ms-1" data-bind="text: tsk.jobTypeName"></span>
                       <span class="text-muted ms-1" data-bind="text: tsk.jobPriority"></span>
                     </div>
-                    <div class="text-end text-muted ms-2"
-                         data-bind="text: tsk.statusTimeAgoLabel"></div>
+                    <div class="text-end ms-2">
+                      <!-- ko with: tsk.etaInfo -->
+                      <span class="eta-chip" data-bind="css: chipClass, fastTooltip: title"><i class="fa" data-bind="css: iconClass"></i><span data-bind="text: label"></span></span>
+                      <!-- /ko -->
+                      <div class="text-muted" data-bind="text: tsk.statusTimeAgoLabel, css: { small: tsk.etaInfo() }"></div>
+                    </div>
                   </div>
 
                   <!-- Second row: address -->
                   <div class="small text-truncate mt-1"
-                       data-bind="text: tsk.prettyAddress"></div>
+                       data-bind="text: tsk.prettyAddress, flashTextOnChange: tsk.prettyAddress"></div>
 
                   <!-- Third row: actions -->
 <div class="mt-1 d-flex align-items-start justify-content-between">
@@ -94,7 +104,7 @@ export function buildAssetPopupKO() {
   <!-- SituationOnScene block -->
   <div class="flex-grow-1 pe-2 small text-muted"
        style="white-space: pre-wrap; line-height: 1.2;"
-       data-bind="text: job.situationOnScene">
+       data-bind="text: job.situationOnScene, flashTextOnChange: job.situationOnScene">
   </div>
 
   <!-- Action buttons -->

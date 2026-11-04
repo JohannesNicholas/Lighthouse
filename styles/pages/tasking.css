@@ -26,6 +26,10 @@ body {
   background-color: #f1bfbf !important;
 }
 
+.row-rescue-fr1 {
+  background-color: #e9a3a3 !important;
+}
+
 .row-priority {
   background-color: #fcf8e3 !important;
 }
@@ -44,6 +48,16 @@ body {
 }
 
 .row-rescue > div > button > .not-pinned {
+  font-size: 11px !important;
+  color: var(--bs-secondary-color) !important;
+}
+
+.row-rescue-fr1 > div > button > .is-pinned {
+  color: white !important;
+  --bs-text-opacity: 1 !important;
+}
+
+.row-rescue-fr1 > div > button > .not-pinned {
   font-size: 11px !important;
   color: var(--bs-secondary-color) !important;
 }
@@ -172,6 +186,400 @@ body.env-devbeacon .incidents-header {
   z-index: 2000;
 }
 
+
+/* Tasking status menu (#tasking-status-menu-template): progress line, next
+   step, skip ahead, stop, guarded corrections and the ETA/ETC editor. */
+/* Every page has the same width, and pages fill the frame's held height
+   with their buttons pinned to the bottom (see the holdHeight binding). */
+.tsm-frame {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: 78vw;
+}
+.tsm-frame > .tsm {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.tsm-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #e9ecef;
+}
+.tsm-head {
+  margin-bottom: 10px;
+}
+.tsm-eu-title .fa.tsm-head-stop {
+  color: #b02a37;
+}
+.tsm-time {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tsm-time-now {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.tsm-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0d6efd;
+  text-decoration: underline;
+}
+/* dateTime24 binding: date box + 24-hour time text box. */
+.dt24 {
+  display: flex;
+  gap: 6px;
+}
+.dt24-date {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dt24-time {
+  flex: 0 0 72px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Section heading on the status-change page (Time, ETA, ETC). */
+.tsm-field-title {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #212529;
+}
+.tsm-track {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin: 2px 2px 10px;
+}
+.tsm-track::before,
+.tsm-track-fill {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 5px;
+  height: 2px;
+}
+.tsm-track::before {
+  right: 14px;
+  background: #dee2e6;
+}
+.tsm-track-fill {
+  background: #198754;
+}
+.tsm-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 42px;
+  font-size: 9.5px;
+  line-height: 1.15;
+  text-align: center;
+  color: #adb5bd;
+}
+.tsm-step i {
+  width: 12px;
+  height: 12px;
+  margin-bottom: 3px;
+  border-radius: 50%;
+  border: 2px solid #ced4da;
+  background: #fff;
+}
+.tsm-step small {
+  font-size: 9px;
+  font-weight: 400;
+  color: #6c757d;
+}
+.tsm-step.done {
+  color: #495057;
+}
+.tsm-step.done i {
+  background: #198754;
+  border-color: #198754;
+}
+.tsm-step.cur {
+  color: #000;
+  font-weight: 700;
+}
+.tsm-step.cur i {
+  background: #ffc107;
+  border-color: #b58500;
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+}
+.tsm-now {
+  margin-bottom: 6px;
+  padding: 6px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+.tsm-now-status {
+  margin-bottom: 4px;
+  font-size: 12.5px;
+}
+.tsm-now-head,
+.tsm-caption {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+.tsm-now-head {
+  margin-right: 4px;
+}
+.tsm-now-eta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.tsm-none {
+  font-size: 11.5px;
+  color: #6c757d;
+}
+.tsm-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #0d6efd;
+  border-radius: 5px;
+  background: #fff;
+  color: #0d6efd;
+}
+.tsm-edit:hover {
+  background: #0d6efd;
+  color: #fff;
+}
+.tsm-caption {
+  margin: 6px 2px 3px;
+}
+.tsm-next-row {
+  display: flex;
+  gap: 6px;
+}
+.tsm-next {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-weight: 600;
+}
+.tsm-ext {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.tsm-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.tsm-item small {
+  font-size: 10.5px;
+  white-space: nowrap;
+  color: #6c757d;
+}
+.tsm-item.tsm-stop {
+  color: #b02a37;
+}
+.tsm-sep {
+  margin: 6px 0;
+  border-top: 1px solid #e9ecef;
+}
+.tsm-correct {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font-size: 11.5px;
+  text-align: left;
+  color: #6c757d;
+}
+.tsm-correct:hover {
+  background: #f8f9fa;
+  text-decoration: underline;
+}
+.tsm-warn {
+  margin-bottom: 8px;
+  padding: 7px 8px;
+  border: 1px solid #ffda6a;
+  border-radius: 6px;
+  background: #fff3cd;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #5c4100;
+}
+.tsm-warn b {
+  color: #3d2b00;
+}
+.tsm-warn-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.tsm-back-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border: 1px solid #ffda6a;
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+}
+.tsm-back-item:hover {
+  background: #fffaeb;
+}
+.tsm-back-item span {
+  font-weight: 600;
+}
+.tsm-back-item small {
+  font-size: 10.5px;
+  color: #8a6100;
+}
+.tsm-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px dashed #e0a800;
+  border-radius: 6px;
+  background: #fffaeb;
+  font-size: 11.5px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.tsm-ack input {
+  margin-top: 2px;
+}
+.tsm-eu-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.tsm-eu-title .fa {
+  color: #0d6efd;
+}
+.tsm-eu-sub {
+  margin: 1px 0 8px;
+  font-size: 11px;
+  color: #6c757d;
+}
+.tsm-eu-cmp {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.tsm-eu-box {
+  padding: 5px 8px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  text-align: center;
+}
+.tsm-eu-box .k {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+.tsm-eu-box .v {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.tsm-eu-box .r {
+  font-size: 11px;
+  font-weight: 600;
+}
+.tsm-eu-old .v {
+  color: #6c757d;
+}
+.tsm-eu-new {
+  border: 2px solid #0d6efd;
+  background: #f1f7ff;
+}
+.tsm-eu-new .v,
+.tsm-eu-new .r {
+  color: #0a58ca;
+}
+.tsm-eu-arrow {
+  font-size: 16px;
+  color: #adb5bd;
+}
+.tsm-eu-label {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #495057;
+}
+.tsm-eu-quick {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.tsm-eu-quick button {
+  padding: 4px 0;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #212529;
+}
+.tsm-eu-quick button:hover {
+  border-color: #0d6efd;
+  background: #0d6efd;
+  color: #fff;
+}
+.tsm-eu-reset {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6c757d;
+  text-decoration: underline;
+}
+
 /* Ensure key UI elements follow the smaller base size */
 button,
 input,
@@ -209,7 +617,8 @@ td.chev[draggable='true'] * {
   user-select: none !important;
 }
 
-.pane .small {
+.pane .small,
+.dropdown-menu.lifted-from-pane .small { /* see utils/dropdownPortal.js */
   font-size: 0.8rem;
 }
 .input-group-sm .form-control {
@@ -259,27 +668,32 @@ td.chev[draggable='true'] * {
 .app {
   display: flex;
   height: 100vh;
+  /* Visible height on tablets/phones, where 100vh runs under the browser's toolbar. */
+  height: 100dvh;
   width: 100vw;
 }
 
 .app.layout-map-left-teams-top .sidebar,
 .app.layout-map-left-tasking-top .sidebar,
 .app.layout-map-left-teams-only .sidebar,
-.app.layout-map-left-tasking-only .sidebar {
+.app.layout-map-left-tasking-only .sidebar,
+.app.layout-map-left-tabbed .sidebar {
   order: 3;
 }
 
 .app.layout-map-left-teams-top .vsplit,
 .app.layout-map-left-tasking-top .vsplit,
 .app.layout-map-left-teams-only .vsplit,
-.app.layout-map-left-tasking-only .vsplit {
+.app.layout-map-left-tasking-only .vsplit,
+.app.layout-map-left-tabbed .vsplit {
   order: 2;
 }
 
 .app.layout-map-left-teams-top .map-wrap,
 .app.layout-map-left-tasking-top .map-wrap,
 .app.layout-map-left-teams-only .map-wrap,
-.app.layout-map-left-tasking-only .map-wrap {
+.app.layout-map-left-tasking-only .map-wrap,
+.app.layout-map-left-tabbed .map-wrap {
   order: 1;
 }
 
@@ -367,6 +781,91 @@ body.sidebar-collapsed .vsplit {
   opacity: 1;
 }
 
+/* Sanitised free-text HTML from external feeds (e.g. council traffic
+   reports, see utils/feedHtml.js): tight paragraphs, and long reports
+   scroll instead of making the popup taller than the map. */
+.lh-feed-html {
+  max-height: 12em;
+  overflow-y: auto;
+}
+.lh-feed-html p,
+.lh-feed-html ul,
+.lh-feed-html ol {
+  margin: 0 0 0.4em;
+}
+.lh-feed-html ul,
+.lh-feed-html ol {
+  padding-left: 1.2em;
+}
+
+/* Job/incident marker hover tooltip -- a quick glance, not a popup.
+   Non-interactive (Leaflet tooltips default to pointer-events: none), so
+   it can never intercept a click meant for the marker underneath, and it
+   never auto-pans the map -- see wireJobTooltip() in markers/jobMarker.js. */
+.leaflet-tooltip.job-tooltip {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  line-height: 1.35;
+  /* max-width alone leaves the actual width to the browser's shrink-to-fit
+     guess for this absolutely-positioned box, which can land far smaller
+     than the content needs (near one-word-per-line). min-width floors it
+     to something legible regardless; max-width still caps long content. */
+  min-width: 220px;
+  max-width: 280px;
+  white-space: normal;
+}
+.job-tooltip__title {
+  font-weight: 600;
+}
+.job-tooltip__addr {
+  color: #444444;
+  margin-top: 2px;
+}
+.job-tooltip__meta {
+  color: #6b6b6b;
+  font-size: 11px;
+  margin-top: 2px;
+}
+.job-tooltip__sit {
+  color: #444444;
+  margin-top: 2px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.job-tooltip__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+  margin-top: 5px;
+}
+.job-tooltip__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.job-tooltip__badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.job-tooltip__badge--warn {
+  background: rgba(217, 119, 6, 0.16);
+  color: #b45309;
+}
+
 .pane--bottom {
   flex-grow: 1;
   flex-shrink: 1;
@@ -426,40 +925,235 @@ body.sidebar-collapsed .vsplit {
   border-bottom: 0;
 }
 
-.layout-preset-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 10px;
+/* Tabbed layouts: one list at full height, picked by the tab buttons in the
+    tab bar (.drawer-tabs); .tabbed-incidents on .app = incidents. */
+.app.layout-map-right-tabbed #hsplit,
+.app.layout-map-left-tabbed #hsplit,
+.app.layout-map-right-tabbed:not(.tabbed-incidents) #paneBottom,
+.app.layout-map-left-tabbed:not(.tabbed-incidents) #paneBottom,
+.app.layout-map-right-tabbed.tabbed-incidents #paneTop,
+.app.layout-map-left-tabbed.tabbed-incidents #paneTop {
+  display: none !important;
 }
 
-.layout-preset-card {
-  border: 1px solid var(--bs-border-color);
-  border-radius: 0.5rem;
-  padding: 0.5rem;
+.app.layout-map-right-tabbed #paneTop,
+.app.layout-map-left-tabbed #paneTop,
+.app.layout-map-right-tabbed #paneBottom,
+.app.layout-map-left-tabbed #paneBottom {
+  order: 1;
+  flex: 1 1 auto;
+  height: auto;
+  border-bottom: 0;
+}
+
+/* Tabbed layouts in portrait: drawer and map stacked, full width. Map Right
+   puts the map below the drawer, Map Left above it. The side splitter
+   becomes a row splitter setting --sidebar-h (resize.js). */
+@media (orientation: portrait) {
+  .app.layout-map-right-tabbed,
+  .app.layout-map-left-tabbed {
+    flex-direction: column;
+  }
+  .app.layout-map-right-tabbed .sidebar,
+  .app.layout-map-left-tabbed .sidebar {
+    width: auto !important;
+    min-width: 0 !important;
+    flex: 0 0 min(var(--sidebar-h, 55%), calc(100% - 160px));
+  }
+  body.sidebar-collapsed .app.layout-map-right-tabbed .sidebar,
+  body.sidebar-collapsed .app.layout-map-left-tabbed .sidebar {
+    flex-basis: 0;
+  }
+  .app.layout-map-right-tabbed .vsplit,
+  .app.layout-map-left-tabbed .vsplit {
+    width: auto !important;
+    height: 6px;
+    flex: 0 0 auto;
+    cursor: row-resize;
+  }
+  .app.layout-map-right-tabbed .vsplit::after,
+  .app.layout-map-left-tabbed .vsplit::after {
+    inset: 1px 0;
+  }
+  .app.layout-map-right-tabbed .map-wrap,
+  .app.layout-map-left-tabbed .map-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+  }
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .app.layout-map-right-tabbed .vsplit,
+  .app.layout-map-left-tabbed .vsplit {
+    height: 16px;
+  }
+}
+
+/* Tabbed layouts: with the header pill gone, the list's search box and
+   buttons span the whole row, the buttons sharing the space evenly. */
+.app.layout-map-right-tabbed .pane-toolbar > :last-child,
+.app.layout-map-left-tabbed .pane-toolbar > :last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.app.layout-map-right-tabbed .pane-toolbar > :last-child > .btn,
+.app.layout-map-left-tabbed .pane-toolbar > :last-child > .btn,
+.app.layout-map-right-tabbed .pane-toolbar > :last-child > .dropdown,
+.app.layout-map-left-tabbed .pane-toolbar > :last-child > .dropdown {
+  flex: 1 1 0;
+  min-width: 32px;
+}
+.app.layout-map-right-tabbed .pane-toolbar > :last-child > .dropdown > .btn,
+.app.layout-map-left-tabbed .pane-toolbar > :last-child > .dropdown > .btn {
+  width: 100%;
+}
+/* Equal shares: drop the buttons' own side padding (px-1/px-2), which would
+   otherwise be added on top of each share. */
+.app.layout-map-right-tabbed .pane-toolbar > :last-child > .btn,
+.app.layout-map-left-tabbed .pane-toolbar > :last-child > .btn,
+.app.layout-map-right-tabbed .pane-toolbar > :last-child > .dropdown > .btn,
+.app.layout-map-left-tabbed .pane-toolbar > :last-child > .dropdown > .btn {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Tab bar across the top of the drawer (tabbed layouts only). The active
+   tab takes the environment colour of the list headers it replaces. */
+.drawer-tabs {
+  display: none;
+}
+
+.app.layout-map-right-tabbed .drawer-tabs,
+.app.layout-map-left-tabbed .drawer-tabs {
+  display: flex;
+  order: 0;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 6px 8px 3px;
+}
+
+.app.layout-map-right-tabbed .toolbar-label,
+.app.layout-map-left-tabbed .toolbar-label {
+  display: none !important;
+}
+
+.drawer-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 2px solid #f7931d;
+  border-radius: 10px;
+  background: #fff;
+  color: #9a5a0f;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-tab.active {
+  background: #f7931d;
+  color: #fff;
+}
+
+body.env-trainbeacon .drawer-tab {
+  border-color: #219f56;
+  color: #176b3a;
+}
+body.env-trainbeacon .drawer-tab.active {
+  background: #219f56;
+  color: #fff;
+}
+
+body.env-devbeacon .drawer-tab {
+  border-color: #2d9ee0;
+  color: #1c6b99;
+}
+body.env-devbeacon .drawer-tab.active {
+  background: #2d9ee0;
+  color: #fff;
+}
+
+.dark-mode .drawer-tab:not(.active) {
+  background: transparent;
+  color: #ddd;
+}
+
+/* Layout tab: six tiles, each a thumbnail of the page (3 x 2). */
+.layout-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 760px;
+}
+
+.layout-tile {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  background: var(--bs-body-bg);
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 2px solid transparent;
+  border-radius: 0.6rem;
   cursor: pointer;
 }
 
-.layout-preset-card.is-active {
+.layout-tile.active {
   border-color: var(--bs-primary);
-  box-shadow: inset 0 0 0 1px var(--bs-primary);
+  background: var(--bs-primary-bg-subtle);
 }
 
-.layout-preset-radio {
-  align-self: flex-start;
-  margin: 0;
+.layout-tile:has(input:focus-visible) {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
 }
 
-.layout-preset-name {
-  font-weight: 600;
+/* Thumbnails keep the page's shape and grow with the modal; the icons
+   scale with them (cqw = % of the thumbnail's width). */
+.layout-tile .layout-preset-preview {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  container-type: inline-size;
+}
+
+/* (Selectors one class stronger than the .layout-preset-preview rules
+   further down, which would otherwise win.) */
+.layout-tile .layout-preset-preview .preview-block {
+  font-size: clamp(11px, 7cqw, 22px);
+  color: var(--bs-secondary-color);
+}
+
+/* List blocks: the icon as a header with faint rows under it. */
+.layout-tile .layout-preset-preview .preview-block--teams,
+.layout-tile .layout-preset-preview .preview-block--tasking {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0.35em 0.45em;
+  background:
+    linear-gradient(var(--bs-body-bg), var(--bs-body-bg)) top / 100% 1.6em no-repeat,
+    repeating-linear-gradient(to bottom, transparent 0 0.75em, rgba(0, 0, 0, 0.07) 0.75em 1.05em) var(--bs-body-bg);
+}
+
+/* Map block: a soft map tint. */
+.layout-tile .layout-preset-preview .preview-block--map {
+  background: #e6efe1;
+}
+
+.layout-tile.active .layout-preset-preview .preview-block {
+  color: var(--bs-primary);
+}
+
+.layout-tile-name {
+  font-size: 0.95rem;
   line-height: 1.2;
-}
-
-.layout-preset-description {
-  line-height: 1.25;
+  text-align: center;
 }
 
 .layout-preset-preview {
@@ -549,6 +1243,35 @@ body.sidebar-collapsed .vsplit {
 .layout-preset-preview.preset-map-right-tasking-only .preview-block--tasking,
 .layout-preset-preview.preset-map-left-tasking-only .preview-block--tasking {
   grid-row: 1 / span 2;
+}
+
+/* Tabbed: one drawer block, with the other list as a tab in its corner. */
+.layout-preset-preview.preset-map-right-tabbed .preview-block--teams,
+.layout-preset-preview.preset-map-left-tabbed .preview-block--teams {
+  grid-row: 1 / span 2;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 4px 0 0 4px;
+}
+
+.layout-preset-preview.preset-map-right-tabbed .preview-block--tasking,
+.layout-preset-preview.preset-map-left-tabbed .preview-block--tasking {
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  margin: 3px 4px 0 0;
+  padding: 1px 4px;
+  border-style: dashed;
+  z-index: 1;
+}
+
+.layout-preset-preview.preset-map-left-tabbed .preview-block--teams,
+.layout-preset-preview.preset-map-left-tabbed .preview-block--tasking {
+  grid-column: 2;
+}
+
+.layout-preset-preview.preset-map-left-tabbed .preview-block--map {
+  grid-column: 1;
 }
 
 .layout-preset-preview.preset-map-only {
@@ -866,6 +1589,178 @@ tr.job:hover {
   --bs-modal-width: 1200px;
 }
 
+/* Incident images modal -- the preview fills whatever vertical space is left in the
+   modal (rather than guessing a vh size), so the filename/toolbar never sit below the
+   fold. Every ancestor down to the image needs min-height:0 for the flex box to actually
+   shrink instead of overflowing (the default flex min-height is 'auto', i.e. content size).
+
+   Bootstrap's .modal-dialog-scrollable only caps .modal-content at max-height:100% -- it
+   doesn't force it there, so with little content the modal just shrinks to fit. That means
+   .modal-content's height is only "definite" once content is already taller than the
+   viewport, which is exactly the case that needs a definite height flowing down to size
+   the image -- a circular dependency the image resolves by falling back to intrinsic size
+   for the axis that lost the tug-of-war (max-width won via shrink-to-fit, max-height didn't).
+   Forcing the height (not just capping it) breaks that circularity everywhere downstream. */
+#incidentImagesModal .modal-content {
+  height: 100%;
+}
+
+/* No internal scrolling below the preview box itself -- the thumbnail rail and the
+   zoomed-image box each own their own scroll region instead. */
+#incidentImagesModal .modal-body {
+  overflow-y: hidden;
+}
+
+.incident-images-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.incident-images-row {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.incident-images-preview-col {
+  min-height: 0;
+}
+
+.incident-images-thumb-rail {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.incident-images-thumb {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.incident-images-thumb img {
+  transition: transform 0.15s ease;
+}
+
+.incident-images-thumb--active {
+  border-color: var(--bs-primary, #0d6efd) !important;
+  box-shadow: 0 0 0 2px var(--bs-primary, #0d6efd);
+}
+
+/* Non-scrolling positioning anchor for the nav arrows -- they live here, not inside
+   .incident-images-preview, so panning the zoomed image (which scrolls that inner box)
+   doesn't drag them around with it. This element owns the flex-item sizing (from the
+   column above); .incident-images-preview below just fills it at 100%/100%, which also
+   keeps it from being a content-size-sensitive flex item in its own right. */
+.incident-images-preview-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 300px;
+}
+
+.incident-images-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* hidden (not auto) by default -- guarantees no scrollbar ever shows for the fitted
+     image, even if sub-pixel rounding leaves it a hair taller than the box. Zooming
+     switches this to auto so the (now unconstrained) image can be scrolled/panned. */
+  overflow: hidden;
+}
+
+/* Flexbox alignment (even flex-start) still runs the overflowing box through the flex
+   layout/stretch algorithm, which is where the vertical scroll kept breaking. Dropping to
+   plain display:block for the zoomed state sidesteps flex entirely: the button becomes an
+   ordinary block box that shrink-wraps its content (the natural-size image), and a block
+   box taller than its container overflows downward in totally standard, unambiguous,
+   always-scrollable fashion -- the same mechanism every plain "big image in a scrolling
+   div" on the web relies on. */
+.incident-images-preview--zoomed {
+  display: block;
+  overflow: auto;
+}
+
+/* The button is an empty, purely-positioned box: flex:1 1 auto + align-self:stretch give
+   it real dimensions straight from the flex algorithm (no percentage/content-size
+   dependency at all, since it has no content driving an intrinsic size once the image
+   is taken out of flow below). The image is then absolutely filled into it and object-fit
+   does the actual scale-to-fit -- this sidesteps every percentage-height circularity that
+   max-width/max-height-based sizing kept losing to. This only applies to the *fitted*
+   (non-zoomed) state -- flex/align-self have no effect once the container above switches
+   to display:block for zooming, so the zoomed override below governs sizing instead. */
+.incident-images-preview-btn {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  cursor: zoom-in;
+  position: relative;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+
+.incident-images-preview-btn img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform 0.15s ease;
+}
+
+.incident-images-preview-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* zoomed: plain block box (sized purely by its content, the natural-size image) instead
+   of a flex item -- see .incident-images-preview--zoomed above */
+.incident-images-preview-btn--zoomed {
+  display: block;
+  cursor: grab;
+}
+
+.incident-images-preview-btn--zoomed:active {
+  cursor: grabbing;
+}
+
+.incident-images-preview-btn--zoomed img {
+  position: static;
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+}
+
+.incident-images-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+}
+
+.incident-images-nav--prev {
+  left: 0.5rem;
+}
+
+.incident-images-nav--next {
+  right: 0.5rem;
+}
+
 .status-line {
   font-size: 0.875rem;
   opacity: 0.75;
@@ -876,12 +1771,160 @@ tr.job:hover {
   margin-bottom: 0.75rem;
 }
 .selected-box {
-  min-height: 58px;
-  max-height: 120px;
-  overflow: auto;
+  min-height: 44px;
 }
 .pill {
   margin: 0.125rem;
+}
+
+/* Config modal, Data pane: the location filters (HQ search + selected
+   boxes) sit above the data-window controls, with a real NSW basemap
+   zoomed to the incident-filter HQs bleeding off the bottom-right corner
+   as a watermark. The map is non-interactive decoration. */
+#cfgPane-data {
+  position: relative;
+  min-height: 100%;
+}
+#cfgPane-data > .cfg-location {
+  position: relative;
+  z-index: 2;
+}
+#cfgPane-data > .cfg-location-sep,
+#cfgPane-data > .cfg-data {
+  position: relative;
+  z-index: 1;
+}
+.cfg-location .form-label {
+  margin-bottom: 0.2rem;
+  font-size: 0.85rem;
+}
+.cfg-location > .row {
+  margin-top: 0.5rem;
+  margin-inline: 0;
+}
+.cfg-location-sep {
+  margin: 0.65rem 0;
+  border-color: var(--bs-border-color, #dee2e6);
+  opacity: 0.6;
+}
+
+/* Compact HQ pills + selected boxes so the Data pane fits with no scroll */
+.cfg-location .input-group > .form-control,
+.cfg-location .input-group > .btn {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
+.cfg-location .card-header {
+  padding: 0.2rem 0.5rem;
+}
+.cfg-location .card-header .small {
+  font-size: 0.75rem;
+}
+.cfg-location .card-header .btn {
+  --bs-btn-padding-y: 0;
+  --bs-btn-padding-x: 0.4rem;
+  --bs-btn-font-size: 0.72rem;
+}
+/* No inner scrollbar: the box shows every pill and grows the pane (the
+   modal body is the only thing that scrolls). While collapsed it's capped
+   with a soft fade and the "Show all" button reveals the rest. */
+.cfg-location .selected-box {
+  min-height: 40px;
+  overflow: hidden;
+  padding: 0.3rem 0.4rem;
+}
+.cfg-location .selected-box.clipped {
+  max-height: 116px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+}
+.cfg-location .cfg-more-btn {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0;
+  background: none;
+  color: var(--bs-primary, #0d6efd);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+.cfg-location .cfg-more-btn:hover {
+  background: var(--bs-tertiary-bg, #f8f9fa);
+}
+.cfg-location .selected-box .pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.32rem;
+  margin: 0.09rem;
+  line-height: 1.3;
+}
+.cfg-location .selected-box .pill .btn-load-children {
+  font-size: 0.62rem;
+  padding: 0 1px;
+  margin-left: 0.1rem;
+}
+.cfg-location .selected-box .pill .btn-close {
+  margin-left: 0.28rem;
+  padding: 0;
+  transform: scale(0.62);
+}
+
+/* Data pane: the "Loading now" readout is gone, so the field stack keeps
+   its original single-column order and spacing across the full width. */
+#cfgPane-data .cfg-data {
+  display: block;
+  max-width: none;
+}
+
+.hq-coverage-watermark-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  /* follow the modal's rounded corner */
+  border-bottom-right-radius: var(--bs-modal-border-radius, 0.5rem);
+}
+.hq-coverage-watermark {
+  position: absolute;
+  right: -72px;
+  bottom: -72px;
+  width: 480px;
+  height: 400px;
+  max-width: 68%;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  /* very soft falloff from the bottom-right corner -- no hard edges */
+  --hq-fade: radial-gradient(150% 150% at 100% 100%,
+      #000 2%,
+      rgba(0, 0, 0, 0.6) 26%,
+      rgba(0, 0, 0, 0.9) 48%,
+      transparent 70%);
+  -webkit-mask-image: var(--hq-fade);
+  mask-image: var(--hq-fade);
+}
+.hq-coverage-watermark.is-visible {
+  opacity: 0.34;
+}
+.hq-coverage-watermark .leaflet-container {
+  background: transparent;
+  font: inherit;
+}
+/* Crossfade the shaded HQ boundaries when the filter changes rather than
+   letting them pop in/out (see hqCoverageMap.js swapBoundaries). */
+.hq-coverage-watermark path.hq-cov-poly {
+  transition: fill-opacity 0.45s ease, stroke-opacity 0.45s ease;
+}
+body.dark-mode .hq-coverage-watermark.is-visible {
+  opacity: 0.42;
+}
+@media (max-width: 991.98px) {
+  .hq-coverage-watermark-clip {
+    display: none;
+  }
 }
 
 .btn-load-children {
@@ -899,7 +1942,7 @@ tr.job:hover {
 }
 
 #searchDropdown.dropdown-menu {
-  max-height: 150px;
+  max-height: 280px;
   overflow: auto;
   position: absolute;
   top: 100%;
@@ -933,19 +1976,150 @@ tr.job:hover {
 }
 
 /* Marker / map UI */
-.marker-pin {
-  width: 40px;
-  height: 40px;
-  border-radius: 50% 50% 50% 0;
-  background: #c30b82;
-  position: absolute;
-  transform: rotate(-45deg);
-  left: 50%;
-  top: 50%;
-  margin: -15px 0 0 -15px;
+/* Asset pins -- see src/pages/tasking/markers/assetPinLayout.js.
+   Everything is drawn relative to .asset-pin__rot, whose origin is the tip
+   (the icon anchor, 20,56). The layout swings __rot around the tip (0 =
+   straight up, clockwise) and can push __head out along it; the label is
+   counter-rotated so it stays upright. A pin that's only rotated keeps its
+   point on the true position. A pushed-out one (.has-stem) can't, so it
+   becomes a circle, with a dot on the true position and a line from the
+   dot to the circle's edge. These moves are inline
+   transforms from writePlacement, animated by transitions. An upright pin
+   has no transforms and no stem at all: with thousands of markers, any
+   transform or extra element on every pin makes panning crawl once they've
+   all been on screen (e.g. after zooming out and back in), so the line and
+   dot only exist on pushed-out pins. */
+
+/* Only the visible pin is clickable, not the icon's box: once a pin swings
+   away, the empty box would otherwise eat clicks meant for whatever is
+   under it. Clicks on the pin still bubble up to Leaflet's handlers. */
+.leaflet-marker-icon.leaflet-interactive.asset-pin-icon {
+  pointer-events: none;
 }
 
-.marker-pin::after {
+.asset-pin__body,
+.asset-pin__code,
+.asset-pin__label {
+  pointer-events: auto;
+}
+
+.asset-pin {
+  position: absolute;
+  inset: 0;
+}
+
+.asset-pin__rot {
+  position: absolute;
+  left: 20px;
+  top: 56px;
+  width: 0;
+  height: 0;
+}
+
+.asset-pin__rot,
+.asset-pin__head,
+.asset-pin__label {
+  transition: transform 300ms ease-out;
+}
+
+/* Users who've asked their OS for reduced motion get instant moves. */
+@media (prefers-reduced-motion: reduce) {
+  .asset-pin__rot,
+  .asset-pin__head,
+  .asset-pin__label,
+  .asset-pin__stem,
+  .asset-pin__dot,
+  .asset-pin__body::before {
+    transition: none !important;
+  }
+}
+
+/* Line from the true position to the circle's edge (writePlacement sets
+   its length). */
+.asset-pin__stem {
+  display: none;
+  position: absolute;
+  left: -1px;
+  width: 2px;
+  background: var(--pin-color);
+  transition: height 300ms ease-out, top 300ms ease-out;
+}
+
+/* True position. Not rotated, so it's outside __rot, centred on the tip. */
+.asset-pin__dot {
+  display: none;
+  position: absolute;
+  left: 15px;
+  top: 51px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pin-color);
+  border: 2px solid #fff;
+  box-sizing: border-box;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+  transition: transform 150ms ease-out;
+}
+
+.asset-pin.has-stem .asset-pin__stem,
+.asset-pin.has-stem .asset-pin__dot {
+  display: block;
+}
+
+.asset-pin.has-stem .asset-pin__body::before {
+  opacity: 0;
+}
+
+/* Hover, or its popup is open (.is-focused): the pin rises above its
+   neighbours (riseOnHover / focusWhilePopupOpen in assetMarker.js) and is
+   picked out, with its line and dot if it has them. */
+.asset-pin:hover .asset-pin__stem,
+.asset-pin.is-focused .asset-pin__stem {
+  left: -2px;
+  width: 4px;
+}
+
+.asset-pin:hover .asset-pin__dot,
+.asset-pin.is-focused .asset-pin__dot {
+  transform: scale(1.5);
+}
+
+/* The white outline follows the head's real outline (circle, point and code
+   tab, or just the circle once pushed out): each 2px drop-shadow grows the
+   silhouette so far, so the four together trace it all the way round. Only
+   the one picked-out pin carries the filter. */
+.asset-pin:hover .asset-pin__head,
+.asset-pin.is-focused .asset-pin__head {
+  filter: drop-shadow(2px 0 0 #fff) drop-shadow(-2px 0 0 #fff)
+    drop-shadow(0 2px 0 #fff) drop-shadow(0 -2px 0 #fff)
+    drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
+}
+
+/* Teardrop, unrotated: a 40px circle centred 28.28px above the tip, plus a
+   triangle from the tip up to where the circle's tangents meet it. */
+.asset-pin__body {
+  position: absolute;
+  left: -20px;
+  top: -48.2843px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--pin-color);
+}
+
+.asset-pin__body::before {
+  content: '';
+  position: absolute;
+  left: 5.8579px;
+  top: 34.1421px;
+  border-left: 14.1421px solid transparent;
+  border-right: 14.1421px solid transparent;
+  border-top: 14.1421px solid var(--pin-color);
+  transition: opacity 150ms ease-out;
+}
+
+.asset-pin__body::after {
   content: '';
   width: 34px;
   height: 34px;
@@ -953,6 +2127,66 @@ tr.job:hover {
   background: #000;
   position: absolute;
   border-radius: 50%;
+}
+
+/* A 24px box centred on the body. */
+.asset-pin__label {
+  position: absolute;
+  left: -12px;
+  top: -40.2843px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 10px;
+  text-align: center;
+}
+
+.asset-pin__label p {
+  margin: 0;
+}
+
+/* Capability code (HRV, MSV, CFR...) in a tab on the far side of the head
+   from the point, drawn by asset_icon.js (CODE_TAB_PATH) in an SVG whose
+   viewBox is centred on the body: (0,0) lands on the body's centre, 28.28px
+   above the tip. It's part of the head, so it swings with it; past
+   sideways, writePlacement turns the code over (.is-flipped) so it never
+   reads upside down. Positioned without a transform: see the note at the
+   top about transforms on every pin. */
+.asset-pin__code {
+  position: absolute;
+  left: -20px;
+  top: -62.2843px;
+  width: 40px;
+  height: 26px;
+  overflow: visible;
+}
+
+.asset-pin__code text {
+  font: 700 10px system-ui, -apple-system, 'Segoe UI', sans-serif;
+  letter-spacing: 0.3px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.asset-pin__code.is-flipped text {
+  transform: rotate(180deg);
+}
+
+/* The same code next to each capability in the map legend. */
+.legend-asset-code {
+  font-size: 0.85em;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.asset-codes-off .asset-pin__code,
+.asset-codes-off .legend-asset-code {
+  display: none;
 }
 
 .custom-div-icon i {
@@ -1074,6 +2308,100 @@ tr.job:hover {
   background-color: rgba(0, 0, 0, 0.1);
 }
 
+/* LHQ popup on the SES Units layer (mapLayers/geoservices.js). */
+.lhq-popup {
+  width: 280px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+.lhq-popup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 14px 6px 0; /* clear the popup close button */
+  border-bottom: 1px solid #dee2e6;
+}
+.lhq-popup__name {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.lhq-status {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #e9ecef;
+  color: #495057;
+}
+.lhq-status--monitoring { background: #d1e7dd; color: #0f5132; }
+.lhq-status--unavailable { background: #f8d7da; color: #842029; }
+.lhq-popup__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.lhq-popup__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  background: #f1f3f5;
+}
+.lhq-popup__stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.lhq-popup__stat-label,
+.lhq-popup__muted {
+  color: #6c757d;
+}
+.lhq-popup__section {
+  margin: 8px 0 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6c757d;
+}
+.lhq-popup__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lhq-popup__tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid #9ec5fe;
+  background: #e7f1ff;
+  color: #084298;
+}
+.lhq-popup__contacts {
+  margin: 0;
+}
+.lhq-popup__contacts > div {
+  padding: 3px 0;
+  border-top: 1px solid #e9ecef;
+}
+.lhq-popup__contacts > div:first-child {
+  border-top: 0;
+}
+.lhq-popup__contacts dt {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #6c757d;
+}
+.lhq-popup__contacts dd {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: break-word;
+  user-select: text;
+}
+
 .job-popup {
   min-width: 380px;
   max-width: 380px;
@@ -1126,8 +2454,15 @@ tr.job:hover {
 }
 
 .teams {
-  --team-cols: 30px /* chevron */ 30px /* pin */ 1.35fr /* callsign */ 0.5fr /* status */ 60px /* HQ */ 120px
-    /* task count */ 1fr /* leader */ 140px; /* actions (fixed) */
+  /* status/HQ/task count are short, roughly fixed-format content ("Stood
+     down", "On Alert"), so they get a minmax() floor+ceiling instead of
+     competing with callsign/leader for proportional space — and unlike a
+     bare px track, minmax() can still shrink at narrow pane widths instead
+     of forcing the row into horizontal scroll. chevron/pin/actions stay
+     true fixed widths since they hold buttons, not text. */
+  --team-cols: 30px /* chevron */ 30px /* pin */ 1.35fr /* callsign */ minmax(64px, 90px)
+    /* status */ minmax(40px, 60px) /* HQ */ minmax(96px, 120px) /* task count (+ ETA/ETC chip) */ 1fr
+    /* leader */ 140px; /* actions (fixed) */
 }
 
 /* header */
@@ -1183,6 +2518,70 @@ tr.job:hover {
   white-space: normal;
   text-overflow: ellipsis;
   overflow: hidden;
+}
+
+/* Task Count cell: the ETA/ETC chip sits on a second line */
+.team-cell--count {
+  white-space: normal;
+  line-height: 1.3;
+}
+
+/* ETA (Enroute) / ETC (Onsite) countdowns -- Tasking.etaInfo().
+   ok = on track, soon = 5 min or less to go, late = past due. */
+.eta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid #b6d4fe;
+  background: #e7f1ff;
+  color: #0a58ca;
+  white-space: nowrap;
+  vertical-align: middle;
+  max-width: 100%;
+}
+.eta-chip .fa {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+/* A little tighter in the narrow register cells */
+.team-cell--count .eta-chip,
+.job-cell--status .eta-chip {
+  gap: 3px;
+  padding: 0 6px;
+}
+/* Never spill out of a narrow cell -- ellipsis as a last resort */
+.eta-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.eta-chip--soon {
+  background: #fff3cd;
+  border-color: #ffda6a;
+  color: #7a5600;
+}
+.eta-chip--late {
+  background: #f8d7da;
+  border-color: #f1aeb5;
+  color: #a11d2b;
+}
+.eta-line {
+  display: inline-block; /* hover target (fastTooltip) is just the text */
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 2px;
+  white-space: nowrap;
+  color: #0a58ca;
+}
+.eta-line--soon {
+  color: #9a6b00;
+}
+.eta-line--late {
+  color: #b02a37;
 }
 
 /* Expanded panel inside same card */
@@ -1297,6 +2696,7 @@ tr.job:hover {
 /* Ensure the embedded SVG is a tight, block-level box */
 .leaflet-marker-icon.job-svg-marker > svg {
   display: block; /* no inline baseline */
+  position: relative; /* paints over the marching ring, under the pulse ring */
   overflow: visible; /* avoid stroke clipping */
   shape-rendering: geometricPrecision;
   vector-effect: non-scaling-stroke; /* keeps stroke width stable if scaled */
@@ -1375,16 +2775,11 @@ tr.job:hover {
   stroke-width: 1.5;
 }
 
-/* PULSE RING (separate follower marker using L.divIcon) */
-.pulse-ring-icon {
-  pointer-events: none; /* clicks go to the base marker */
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  line-height: 0;
-  font-size: 0;
-  will-change: transform;
+/* New pulse ring / Active marching ring — drawn inside the job marker's own
+   icon (see withRings() in job_icon.js), overflowing it, centred on the shape. */
+.job-marker-ring {
+  position: absolute;
+  pointer-events: none; /* clicks go to the marker shape */
 }
 
 .pulse-ring {
@@ -1424,6 +2819,38 @@ tr.job:hover {
   }
 }
 
+/* STATUS RING — the Active "marching ring".
+   A dashed circle whose <g> rotates, which reads as marching ants and is
+   compositor-only (cheap) unlike animating stroke-dashoffset. */
+.status-ring-spin {
+  animation: status-ring-spin 9s linear infinite;
+}
+
+@keyframes status-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Non-circular rings can't rotate (the shape would spin), so the dashes
+   march along the outline instead — one dash period (4 + 3.5) per cycle. */
+.status-ring-march {
+  animation: status-ring-march 1s linear infinite;
+}
+
+@keyframes status-ring-march {
+  to {
+    stroke-dashoffset: -7.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-ring-spin,
+  .status-ring-march {
+    animation: none;
+  }
+}
+
 .no-drag {
   user-select: text !important;
   cursor: text !important;
@@ -1445,9 +2872,31 @@ overflow: hidden;
 .leaflet-control.alerts {
   pointer-events: auto;
 }
+
+/* Simulated exercise ended banner (SimulatedExerciseVM.notice). main.js puts
+   it first in the map's top-right corner, so the map alerts stack below it;
+   sized and rounded to match them. */
+.leaflet-control.simex-notice {
+  pointer-events: auto;
+  max-width: min(360px, var(--map-w, 100vw) - 64px);
+  margin-bottom: 0;
+  padding: 10px 2.25rem 10px 12px;
+  font: 13px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+.leaflet-control.simex-notice .btn-close {
+  padding: 0.85rem 0.75rem;
+}
+/* Leaflet colours every link on the map. Keep this one in the banner's own
+   colour: it's bold and underlined, so it still reads as a link. */
+.leaflet-container .simex-notice .alert-link {
+  color: inherit;
+}
 .alerts {
   font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  max-width: 360px;
+  /* Leave room for the zoom/tool controls on the left of a narrow map. */
+  max-width: min(360px, var(--map-w, 100vw) - 64px);
   backdrop-filter: blur(2px);
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
@@ -1686,7 +3135,12 @@ overflow: hidden;
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   min-width: 120px;
-  max-width: 80vw;
+  /* cap the spread (~3 narrow columns) so it can't sheet across the map;
+     anything past this scrolls inside the box */
+  max-width: min(88vw, 620px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
   font-size: 13px;
 }
 
@@ -1694,13 +3148,19 @@ overflow: hidden;
   display: flex;
   flex-direction: column;
   flex-wrap: wrap;
-  max-height: calc(100vh - 120px);
-  gap: 0 20px;
+  /* keep wrapped columns packed to the left rather than spread across */
+  align-content: flex-start;
+  /* Wrap into a new column (rightwards) before the stack climbs into the
+     zoom / tool buttons running down the left edge of the map. The 180px
+     floor stops it collapsing to slivers on very short windows. */
+  max-height: max(180px, calc(100vh - 300px));
+  max-height: max(180px, calc(100dvh - 300px));
+  gap: 0 18px;
 }
 
 .legend-body > div {
-  min-width: 190px;
-  max-width: 300px;
+  min-width: 165px;
+  max-width: 260px;
 }
 
 .legend-container i {
@@ -1755,23 +3215,6 @@ overflow: hidden;
 /* Focus state */
 #CreateOpsLogModal input[type='text']:focus,
 #CreateOpsLogModal textarea:focus {
-  border-color: #1e8740; /* theme colour? */
-  box-shadow: 0 0 0 2px rgba(30, 135, 64, 0.2);
-  outline: none;
-}
-
-#RadioLogModal input[type='text'],
-#RadioLogModal textarea {
-  width: 100%;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  padding: 6px 8px;
-  font-size: 0.9rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-/* Focus state */
-#RadioLogModal input[type='text']:focus,
-#RadioLogModal textarea:focus {
   border-color: #1e8740; /* theme colour? */
   box-shadow: 0 0 0 2px rgba(30, 135, 64, 0.2);
   outline: none;
@@ -1854,8 +3297,16 @@ overflow: hidden;
 
 /* one source of truth (jobs) */
 .jobs {
-  --job-cols: 30px /* chev */ 20px /* pin */ 0.38fr /* Id */ 0.5fr /* Received */ 0.3fr /* HQ */ 0.3fr /* Type */ 1.5fr
-    /* Situation */ 0.5fr /* Status */ 0.9fr; /* Address */
+  /* Id/Received/HQ/Type/Status are short, roughly fixed-format content, so they
+     get a minmax() floor+ceiling sized to fit that content (Received wraps
+     date/time onto two lines rather than needing full-line width) instead of
+     a rigid px width — a bare px track can't shrink, so at narrow pane widths
+     it was pushing Situation/Address off into horizontal scroll. minmax()
+     lets every column compress together first. */
+  --job-cols: 30px /* chev */ 20px /* pin */ minmax(50px, 80px) /* Id */
+    minmax(58px, 72px) /* Received (wraps 2 lines) */ minmax(36px, 64px) /* HQ */
+    minmax(50px, 80px) /* Type */ minmax(90px, 1.6fr) /* Situation */
+    minmax(96px, 104px) /* Status (+ ETA/ETC chip) */ minmax(70px, 1fr); /* Address */
 }
 
 /* body */
@@ -1897,6 +3348,8 @@ overflow: hidden;
   padding-right: 5px;
   padding-left: 5px;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Allow wrapping for the “long” columns so you don't lose information */
@@ -1904,6 +3357,89 @@ overflow: hidden;
 .job-cell--address {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* Cap wrapped text to a few lines with an ellipsis, instead of letting it
+   balloon the row height when text wraps onto many short/fragmented lines. */
+.job-cell--address .btn,
+.job-cell--situation {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.job-cell--situation {
+  -webkit-line-clamp: 3;
+  max-height: 4em;
+}
+
+.job-cell--address .btn {
+  -webkit-line-clamp: 5;
+  max-height: 6.5em;
+  text-align: center;
+}
+
+/* Bootstrap gives disabled buttons pointer-events: none, which also hides
+   their title tooltip. Re-enable hover so the "why disabled" title shows;
+   the disabled attribute still blocks clicks. */
+.btn.btn-disabled-tooltip:disabled {
+  pointer-events: auto;
+  cursor: not-allowed;
+}
+
+/* Time is more actionable at a glance than the date, so it goes on top;
+   two explicit lines rather than a wrapped string. */
+.job-cell--received {
+  text-align: center;
+}
+
+.job-cell--received .received-time {
+  font-weight: 600;
+}
+
+.job-cell--received .received-date {
+  font-size: 0.85em;
+  color: #6c757d;
+}
+
+/* Id text on top, its (optional) images/ICEMS icons on their own row below,
+   so a couple of small icons don't force the id text to truncate. */
+.job-cell--id {
+  text-align: center;
+}
+
+.job-id-icons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* .images-button is a Bootstrap <button> (border + line-height baked in) next
+   to a plain <em> icon — normalize both to the same box so neither sits
+   higher/lower than the other. */
+.job-id-icons > .images-button,
+.job-id-icons > .action-required-button,
+.job-id-icons > em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1em;
+  line-height: 1;
+  border: 0;
+  margin: 0;
+}
+
+.action-required-button {
+  gap: 2px;
+  color: #b45309;
+  font-size: 13px;
+}
+.action-required-count {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .job-cell--chev {
@@ -2018,6 +3554,415 @@ overflow: hidden;
 
 .lmt-25 {
   margin-top: 2.5px !important;
+}
+
+/* === Config modal: left-rail sections === */
+.config-settings {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 0;
+  /* One forgiving working height, held across every rail tab so the modal
+     never resizes when you switch. Most panes fit inside it; only a pane
+     you deliberately grow (e.g. "Show all" on a long HQ list) scrolls, and
+     it scrolls inside .config-panes -- the pill boxes themselves don't. */
+  height: clamp(400px, 66vh, 660px);
+}
+
+.config-rail {
+  align-self: stretch;
+  overflow-y: auto;
+  gap: 2px;
+  padding-right: 1rem;
+}
+
+.config-panes {
+  height: 100%;
+  overflow-y: auto;
+  /* clip x so a Bootstrap .row's negative gutter margin can't add a stray
+     horizontal scrollbar against the one-sided padding. */
+  overflow-x: hidden;
+  border-left: 1px solid #dee2e6;
+  padding-left: 1.25rem;
+  padding-right: 0.25rem;
+}
+
+.config-rail .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  color: #495057;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+.config-rail .nav-link:hover {
+  background: #f1f3f5;
+  color: #212529;
+}
+
+.config-rail .nav-link.active {
+  background: #e7f1ff;
+  color: #0d6efd;
+  font-weight: 600;
+}
+
+/* First of the bottom-of-rail links (asset library, user guide) -- pins the group to the bottom. */
+.config-rail .config-rail-guide {
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid #dee2e6;
+}
+
+.cfg-rail-ico,
+.cfg-sub-ico {
+  width: 1.1rem;
+  text-align: center;
+  flex: none;
+  opacity: 0.85;
+}
+
+.cfg-sub-ico {
+  margin-right: 0.5rem;
+}
+
+/* Configuration > Map markers > Layer order & transparency */
+.layer-stack-list {
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.layer-stack-row.layer-stack-off .layer-stack-name {
+  opacity: 0.6;
+}
+
+.layer-stack-row.is-dragover {
+  box-shadow: inset 0 2px 0 var(--bs-primary);
+}
+
+/* Rows hidden by the search (beats the row's d-flex !important) */
+.layer-stack-list > .layer-stack-row.layer-stack-hidden {
+  display: none !important;
+}
+
+.layer-stack-showall {
+  font-size: inherit;
+}
+
+.layer-stack-search {
+  max-width: 22rem;
+}
+
+.layer-stack-switch {
+  width: 2.5rem;
+  flex: none;
+}
+
+.layer-stack-opacity {
+  width: 7rem;
+  flex: none;
+}
+
+.layer-stack-pct {
+  width: 2.5rem;
+  flex: none;
+}
+
+.cfg-subhead {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6c757d;
+  margin: 0 0 0.75rem;
+}
+
+.config-subaccordion .accordion-body {
+  padding-top: 0.75rem;
+}
+
+/* Dark mode: the shared theme gives every fieldset in a card a #333 panel,
+   which inside an accordion body shows as patchy boxes; and Bootstrap's
+   chevron icon is dark-on-dark. */
+body.dark-mode .config-subaccordion .accordion-body fieldset,
+body.dark-mode .config-subaccordion .accordion-body fieldset legend {
+  background-color: transparent !important;
+}
+
+body.dark-mode .config-subaccordion .accordion-button::after {
+  filter: grayscale(1) invert(1) brightness(1.2);
+}
+
+/* Data pane: preset controls + live "loading now" readout */
+.cfg-data {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  gap: 2.25rem;
+  align-items: start;
+  max-width: 880px;
+}
+
+.cfg-data-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding-top: 0.25rem;
+}
+
+/* same field stack used standalone (Appearance pane) */
+.cfg-fields-solo {
+  max-width: 460px;
+}
+
+.cfg-field > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.cfg-field .ctl {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.cfg-field .ctl .form-switch {
+  display: flex;
+  align-items: center;
+  min-height: auto;
+  margin: 0;
+  padding-left: 0;
+}
+
+.cfg-field .ctl .form-switch .form-check-input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.cfg-field .d {
+  font-size: 0.8125rem;
+  color: #6c757d;
+  margin-top: 0.4rem;
+  max-width: 44ch;
+}
+
+/* preset row: segments / chips + numeric escape hatch */
+.cfg-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+}
+
+.cfg-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.cfg-seg-btn {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 0;
+  border-right: 1px solid var(--bs-border-color, #ced4da);
+  background: #fff;
+  color: #1b2430;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg-seg-btn:last-child {
+  border-right: 0;
+}
+
+.cfg-seg-btn:hover {
+  background: #f1f3f5;
+}
+
+.cfg-seg-btn.active {
+  background: #0d6efd;
+  color: #fff;
+}
+
+.cfg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cfg-chip {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid #ced4da;
+  background: #fff;
+  color: #1b2430;
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg-chip:hover {
+  border-color: #8a929c;
+}
+
+.cfg-chip.active {
+  background: #0d6efd;
+  border-color: #0d6efd;
+  color: #fff;
+}
+
+.cfg-preset-or {
+  font-size: 0.75rem;
+  color: #8a929c;
+}
+
+.cfg-preset-num {
+  width: auto !important;
+  flex: none;
+}
+
+.cfg-preset-num .form-control {
+  width: 3.5rem;
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.cfg-live-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.cfg-live-pill.on {
+  background: #e4f1ea;
+  color: #2f8f5b;
+}
+
+.cfg-live-pill.off {
+  background: #eef0f2;
+  color: #6c757d;
+}
+
+.hotkey-capture-btn {
+  font-variant-numeric: tabular-nums;
+  min-width: 6rem;
+}
+
+.hotkey-capture-btn.listening {
+  border-color: #0d6efd;
+  color: #0d6efd;
+  animation: hotkey-listening-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes hotkey-listening-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.35); }
+  50% { box-shadow: 0 0 0 4px rgba(13, 110, 253, 0); }
+}
+
+.cfg-readout {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 1rem 1.1rem 1.05rem;
+}
+
+.cfg-readout-h {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a929c;
+  margin-bottom: 0.6rem;
+}
+
+.cfg-readout-range {
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.cfg-readout-sub {
+  font-size: 0.8125rem;
+  color: #6c757d;
+  margin-top: 0.15rem;
+}
+
+.cfg-readout-rows {
+  margin-top: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cfg-readout-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.cfg-readout-rows > div > span:last-child {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cfg-readout-note {
+  margin-top: 0.95rem;
+  font-size: 0.75rem;
+  color: #8a929c;
+}
+
+@media (max-width: 820px) {
+  .cfg-data {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .config-settings {
+    grid-template-columns: 1fr;
+    /* rail stacks on top here -- let the modal body scroll normally */
+    height: auto;
+  }
+
+  .config-rail {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-right: 0;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  .config-panes {
+    height: auto;
+    overflow: visible;
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .config-rail .nav-link {
+    width: auto;
+  }
+
+  .config-rail .config-rail-guide {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
 }
 
 /* === Job History / Ops Log two-lane timeline === */
@@ -2165,6 +4110,13 @@ overflow: hidden;
   transform-origin: 50% 50%;
 }
 
+/* Length of the green dashed asset -> incident line (Map.js crowFliesLayer) */
+.crow-flies-distance-label {
+  background: #166534;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
 .team-status-button {
   border: 1px solid #ccc;
   min-width: 90px;
@@ -2189,6 +4141,25 @@ overflow: hidden;
 
 .team-status-button.dropdown-toggle::after {
   display: inline-block;
+}
+
+/* Ops/Radio Log modal: read-only current-status pill (no caret) beside the
+   pending-status dropup, plus the status change details box */
+.team-status-button.ops-log-status-current {
+  display: inline-block;
+  padding-right: 8px;
+  cursor: default;
+  text-align: center;
+}
+
+.ops-log-status-details {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+body.dark-mode .ops-log-status-details {
+  border-color: #444;
 }
 
 #TeamStatusDropdown {
@@ -2387,6 +4358,40 @@ overflow: hidden;
   background-color: rgba(100, 160, 255, 0.22);
 }
 
+/* Generic "value just changed" indicator, applied via the flashOnChange binding */
+.flash-on-change {
+  animation: flash-on-change 0.9s ease-out;
+}
+@keyframes flash-on-change {
+  0% { background-color: rgba(255, 193, 7, 0.55); }
+  100% { background-color: transparent; }
+}
+.dark-mode .flash-on-change {
+  animation: flash-on-change-dark 0.9s ease-out;
+}
+@keyframes flash-on-change-dark {
+  0% { background-color: rgba(255, 213, 79, 0.4); }
+  100% { background-color: transparent; }
+}
+
+/* Same "value just changed" signal, but for text/icons inside wide or full-width
+   containers -- pulses the glyphs themselves instead of filling a background box, so it
+   doesn't leave an oversized highlight behind short text in a wide cell */
+.flash-text-on-change {
+  animation: flash-text-on-change 0.9s ease-out;
+}
+@keyframes flash-text-on-change {
+  0% { color: #b45f06; text-shadow: 0 0 6px rgba(255, 193, 7, 0.75); }
+  100% { color: inherit; text-shadow: none; }
+}
+.dark-mode .flash-text-on-change {
+  animation: flash-text-on-change-dark 0.9s ease-out;
+}
+@keyframes flash-text-on-change-dark {
+  0% { color: #ffd54f; text-shadow: 0 0 6px rgba(255, 213, 79, 0.85); }
+  100% { color: inherit; text-shadow: none; }
+}
+
 /* Fast tooltip (no native delay) — positioned fixed via JS to escape overflow clipping */
 .fast-tooltip {
   display: inline-flex;
@@ -2507,20 +4512,27 @@ overflow: hidden;
   left: 100%;
   margin-left: 6px;
   background: #fff;
-  padding: 8px;
-  width: 760px;
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* width and height are fitted to the map (fitPanel in main.js) */
+  width: 540px;
+  height: 440px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid #ccc;
   border-radius: 0.5rem;
   z-index: 1000;
+}
+
+/* Open panel draws over the bottom corners' controls (minimap) */
+.leaflet-top.leaflet-left:has(.ld-panel:not(.d-none)) {
+  z-index: 1001;
 }
 
 /* ── Search row ── */
 .ld-search-row {
   border-bottom: 1px solid #e0e0e0;
   padding: 6px 8px;
+  flex: none;
 }
 .ld-search-input {
   font-size: 12px;
@@ -2529,30 +4541,133 @@ overflow: hidden;
   color: #999;
 }
 
-/* ── Basemap dropdown row (full width above grid) ── */
-.ld-basemap-row {
-  margin-bottom: 8px;
+/* ── Section rail + selected section ── */
+.ld-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
 }
-.ld-basemap-btn {
-  font-size: 12px;
-  padding: 4px 8px;
-}
-.ld-basemap-menu {
-  font-size: 12px;
-  max-height: 260px;
+.ld-rail {
   overflow-y: auto;
-  width: 100%;
+  border-right: 1px solid #e9ecef;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.ld-basemap-menu .dropdown-item img {
-  flex-shrink: 0;
+.ld-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: #495057;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 5px 7px;
+  text-align: left;
+}
+.ld-rail-item:hover {
+  background: #f0f1f3;
+}
+.ld-rail-item:focus-visible {
+  outline: 2px solid #86b7fe;
+  outline-offset: -2px;
+}
+.ld-rail-item[aria-current="true"] {
+  background: #6c757d;
+  color: #fff;
+}
+.ld-rail-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ld-rail-sub {
+  display: block;
+  font-size: 10.5px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ld-rail-count {
+  flex: none;
+  min-width: 1.5em;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e2e5e9;
+  color: #495057;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ld-rail-count:empty {
+  display: none;
+}
+.ld-rail-item[aria-current="true"] .ld-rail-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.ld-rail-sep {
+  height: 1px;
+  background: #e9ecef;
+  margin: 4px 2px;
+  flex: none;
+}
+.ld-pane {
+  overflow-y: auto;
+  min-width: 0;
+  padding: 8px;
+}
+.ld-pane-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #555;
+  margin-bottom: 6px;
+}
+.ld-empty {
+  font-size: 12px;
+  color: #6c757d;
+  padding: 4px 0;
 }
 
-/* ── Three-column group grid ── */
+/* Narrow map: the rail becomes a scrolling row of chips above the list */
+.ld-narrow .ld-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.ld-narrow .ld-rail {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-right: 0;
+  border-bottom: 1px solid #e9ecef;
+  gap: 4px;
+}
+.ld-narrow .ld-rail-item {
+  flex: none;
+  width: auto;
+  white-space: nowrap;
+  border: 1px solid #ced4da;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.ld-narrow .ld-rail-sep,
+.ld-narrow .ld-rail-sub {
+  display: none;
+}
+
+/* ── Layer list: one column, a cell per group ── */
 .ld-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px 10px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .ld-grid-cell {
   min-width: 0;
@@ -2589,102 +4704,931 @@ overflow: hidden;
   padding: 3px 6px;
 }
 
-/* ── Radar playback bar (bottom-center) ── */
-.rv-wrapper {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  pointer-events: auto;
+/* ── Layer presets (Presets section) ── */
+.ld-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-
-.rv-legend-container {
-  pointer-events: auto;
+.ld-preset {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
 }
-
-.rv-control {
-  background: #fff;
-  padding: 8px 12px;
-  border-radius: 0 0 4px 4px;
+.layers-drawer .ld-preset-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 7px;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+.ld-preset-glyph {
+  flex: none;
+  font-size: 13px;
+}
+.ld-preset-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.ld-preset-name {
+  font-weight: 600;
+}
+.ld-preset-layers {
+  font-size: 10px;
+  opacity: 0.75;
+  white-space: normal;
+}
+.ld-preset-part {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ld-preset-part:empty {
+  display: none;
+}
+/* Some of its layers on: dashed outline */
+.layers-drawer .ld-preset-main.ld-preset-partial {
+  border-style: dashed;
+}
+.ld-preset-action {
+  flex: none;
+  width: 26px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: none;
+  color: #6c757d;
+  font-size: 11px;
+  padding: 0;
+}
+.ld-preset-action:hover:not(:disabled) {
+  background: #f0f1f3;
+  color: #212529;
+}
+.ld-preset-action:disabled {
+  opacity: 0.4;
+}
+.ld-preset-pin[aria-pressed="true"] {
+  background: #6c757d;
+  border-color: #6c757d;
+  color: #fff;
+}
+.ld-preset-pin[aria-pressed="true"]:hover {
+  background: #5c636a;
+  color: #fff;
+}
+.ld-preset-edit {
+  border: 1px solid #ced4da;
+  border-radius: 5px;
+  padding: 6px;
+}
+.ld-preset-edit .ld-preset-form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ld-preset-new {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #e9ecef;
+}
+.ld-preset-new-title {
+  font-size: 11px;
+  font-weight: 600;
+}
+.ld-preset-new-info {
+  font-size: 10.5px;
+  color: #6c757d;
+  margin: 1px 0 5px;
+}
+.ld-preset-form {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ld-preset-form .form-control {
   font-size: 12px;
-  font-family: system-ui, -apple-system, sans-serif;
-  box-shadow: 0 2px 6px rgba(0,0,0,.25);
-  user-select: none;
-  pointer-events: auto;
 }
-.rv-control button {
+.ld-preset-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.ld-preset-icon {
+  width: 26px;
+  height: 24px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: none;
+  color: #495057;
+  font-size: 12px;
+  padding: 0;
+}
+.ld-preset-icon:hover {
+  background: #f0f1f3;
+}
+.ld-preset-icon[aria-checked="true"] {
+  background: #6c757d;
+  border-color: #6c757d;
+  color: #fff;
+}
+.ld-preset-replace {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+}
+.ld-preset-buttons {
+  display: flex;
+  gap: 4px;
+}
+.ld-preset-buttons .btn {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.ld-preset-footer {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+.ld-preset-footer .btn-link {
+  font-size: 11px;
+  text-align: left;
+}
+
+/* Pinned presets: buttons grouped under the Layers button, in its bar */
+.layer-preset-bar[hidden] {
+  display: none !important;
+}
+.layer-preset-bar {
+  display: flex;
+  flex-direction: column;
+}
+.layers-drawer .leaflet-bar:has(.layer-preset-bar:not([hidden])) .ld-toggle-btn {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.layer-preset-bar .lp-btn {
+  position: relative;
+  width: 100%;
+  height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-top: 1px solid #ccc;
+  border-radius: 0;
+}
+.layer-preset-bar .lp-btn:last-child {
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+.layer-preset-bar .lp-btn.active {
+  background: #6c757d;
+  color: #fff;
+}
+/* Some of its layers on: a dot in the corner */
+.layer-preset-bar .lp-part {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6c757d;
+}
+
+/* ── Layer load status (polling layers) ── */
+.layers-drawer .ld-has-status > .me-2 {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.layers-drawer .ld-has-status > .ms-auto {
+  margin-left: 4px !important;
+}
+.ld-status {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.ld-status-pill {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 15px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.ld-status-ok { background: #dff3e6; color: #1d7a45; }
+.ld-status-zero { background: #eceef1; color: #5f6773; }
+.ld-status-warn { background: #fdf0d2; color: #8a5d00; }
+.ld-status-error { background: #fbe2df; color: #b02a20; }
+.ld-status-spin {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid #d5e2f7;
+  border-top-color: #2563c9;
+  animation: ld-spin 0.7s linear infinite;
+}
+@keyframes ld-spin { to { transform: rotate(360deg); } }
+
+.ld-status-detail {
+  flex: 0 0 100%;
+  font-size: 10px;
+  line-height: 1.3;
+  margin-top: 1px;
+  white-space: normal;
+}
+.ld-status-detail-muted { color: #6c757d; }
+.ld-status-detail-warn { color: #8a5d00; }
+.ld-status-detail-error { color: #b02a20; }
+.ld-status-retry {
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Active rows have a dark fill -- lighten the detail line to match */
+.layers-drawer .ld-overlay-btn.active .ld-status-detail-muted { color: rgba(255, 255, 255, 0.82); }
+.layers-drawer .ld-overlay-btn.active .ld-status-detail-warn { color: #ffd98a; }
+/* A failed layer swaps the dark active fill for a red-tinted one */
+.layers-drawer .ld-overlay-btn.active.ld-status-failed,
+.layers-drawer .ld-overlay-btn.active.ld-status-failed:hover {
+  background: #fdf1ef;
+  border-color: #e9a59e;
+  color: #8f2219;
+}
+
+/* Layers button: loading ring + failed/ok badge */
+.layers-drawer .ld-toggle-btn {
+  position: relative;
+  overflow: visible;
+}
+/* Small round spinner in the button's corner (where the badge sits) */
+.ld-load-ring {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #d5e2f7;
+  border-top-color: #2563c9;
+  background: #fff;
+  box-shadow: 0 0 0 1px #fff;
+  animation: ld-spin 0.7s linear infinite;
+  pointer-events: none;
+}
+.ld-load-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  box-sizing: content-box;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  pointer-events: none;
+}
+.ld-load-badge-failed { background: #c0392b; }
+.ld-load-badge-ok { background: #1d7a45; }
+.ld-load-ring[hidden],
+.ld-load-badge[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ld-status-spin, .ld-load-ring { animation-duration: 2.5s; }
+}
+
+/* ── Collaborative layer list (config modal) — scrolls instead of growing the modal indefinitely ── */
+.collab-layer-list-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.collab-layer-row-info {
+  min-width: 0; /* allow text-overflow to work inside a flex row */
+}
+.collab-layer-row-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Collapsed by default (see tasking.html) so the three permission groups
+   below don't eat vertical space in the accordion body unless opened. */
+.collab-permissions-toggle {
+  font-size: 12px;
+}
+.collab-permissions-toggle .fa-chevron-right {
+  transition: transform 0.15s ease;
+}
+.collab-permissions-toggle[aria-expanded="true"] .fa-chevron-right {
+  transform: rotate(90deg);
+}
+.collab-new-layer-options {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+.collab-new-layer-options .form-check {
+  margin-right: 0; /* column-gap above replaces Bootstrap's inline margin */
+}
+.collab-layer-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.collab-layer-delete-confirm .btn {
+  font-size: 11px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
+/* ── Moderator picker (new-layer form + per-row "Manage moderators") ── */
+.collab-moderator-picker {
+  width: 100%;
+}
+.collab-moderator-edit {
+  border-top: 1px solid #eee;
+  padding-top: 8px;
+}
+.collab-moderator-dropdown {
+  max-height: 200px;
+  overflow: auto;
+  position: absolute;
+  top: 100%;
+  z-index: 5;
+}
+.collab-moderator-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.collab-moderator-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: normal;
+}
+.collab-moderator-chip .btn-close {
+  font-size: 9px;
+  padding: 0;
+  opacity: 0.8;
+}
+.collab-moderator-chip .btn-close:hover {
+  opacity: 1;
+}
+
+/* ── Collaborative marker popup (view/edit) ── */
+.collab-marker-popup {
+  font-size: 12px;
+  min-width: 200px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.collab-marker-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.collab-marker-desc {
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+}
+.collab-marker-meta {
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.collab-marker-comments {
+  border-top: 1px solid #eee;
+  margin-bottom: 6px;
+}
+.collab-marker-comments:empty {
+  border-top: none;
+  margin-bottom: 0;
+}
+.collab-marker-comments-loading {
+  color: #888;
+  font-size: 11px;
+  padding: 6px 0 2px;
+}
+.collab-marker-comment {
+  padding: 6px 0 2px;
+  border-bottom: 1px solid #f2f2f2;
+}
+.collab-marker-comment:last-child {
+  border-bottom: none;
+}
+.collab-marker-comment-text {
+  white-space: pre-wrap;
+}
+.collab-marker-comment-meta {
+  color: #888;
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+.collab-marker-comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.collab-marker-comment-form .collab-comment-input {
+  width: 100%;
+  font-size: 12px;
+}
+.collab-marker-comment-form .collab-add-comment-btn {
+  align-self: flex-end;
+  font-size: 10px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+.collab-marker-comments-disabled {
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+/* Aesthetic-only text limit indicator (description/comment textareas) --
+   never affects layout beyond its own line, so it can't destabilize the
+   popup's size the way growing/shrinking the textarea itself would. */
+.collab-char-counter {
+  text-align: right;
+  font-size: 10px;
+  color: #999;
+  margin-top: -2px;
+}
+.collab-char-counter-warn {
+  color: #c07a00;
+}
+.collab-char-counter-limit {
+  color: #c0392b;
+  font-weight: 600;
+}
+.collab-marker-actions,
+.collab-marker-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.collab-marker-actions .btn,
+.collab-marker-confirm .btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
+/* ── Collaborative marker icon badge (the actual map marker) ── */
+.leaflet-marker-icon.collab-marker-icon {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-sizing: content-box;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.collab-marker-badge {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+}
+.collab-marker-badge i {
+  font-size: 13px;
+}
+
+/* ── Collaborative marker create/edit inline form ── */
+.collab-marker-form {
+  font-size: 12px;
+  min-width: 220px;
+  max-width: 260px;
+}
+
+/* Live preview badge -- reflects the currently chosen icon + color before
+   Save, updated as either dropdown selection changes. */
+.collab-style-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.collab-style-preview {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+.collab-style-preview-label {
+  color: #666;
+}
+
+/* Icon + color toggle buttons sit side by side on the popup; each opens
+   its own floating dropdown (see .collab-icon-dropdown / .collab-color-
+   dropdown below) rather than expanding inline, so neither ever resizes
+   or repositions the Leaflet popup they belong to. */
+.collab-picker-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.collab-picker-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid #ddd;
   background: #f9f9f9;
-  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px 8px;
   font-size: 12px;
-  padding: 4px 6px;
-  border-radius: 3px;
-  transition: all 0.15s ease;
-  min-width: 32px;
+  color: #333;
+  cursor: pointer;
+  min-width: 0;
 }
-.rv-control button:hover {
-  background: #fff;
-  border-color: #999;
-}
-.rv-control button:active {
+.collab-picker-toggle:hover {
   background: #f0f0f0;
 }
-.rv-control input[type="range"] {
-  cursor: pointer;
-  height: 4px;
-  border-radius: 2px;
-  outline: none;
+.collab-picker-toggle.open {
+  border-color: #4a90e2;
 }
-.rv-control input[type="range"]::-webkit-slider-thumb {
-  appearance: none;
-  width: 12px;
-  height: 12px;
+.collab-picker-toggle .fa-caret-down {
+  font-size: 10px;
+  transition: transform .15s ease;
+}
+.collab-picker-toggle.open .fa-caret-down {
+  transform: rotate(180deg);
+}
+.collab-toggle-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: #4a90e2;
-  cursor: pointer;
-  border: 1px solid #fff;
-  box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
 }
-.rv-control input[type="range"]::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+.collab-picker-toggle .collab-toggle-icon {
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Floating dropdowns -- appended to the map container, not the Leaflet
+   popup's own content, so opening/closing either one never resizes or
+   repositions the popup it belongs to. */
+.collab-icon-dropdown,
+.collab-color-dropdown {
+  position: absolute;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  padding: 8px;
+  z-index: 1000;
+  font-size: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.collab-icon-dropdown {
+  width: 210px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.collab-color-dropdown {
+  width: 168px;
+}
+.collab-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.collab-color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
   border-radius: 50%;
-  background: #4a90e2;
   cursor: pointer;
-  border: 1px solid #fff;
-  box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
 }
-.rv-control select {
+.collab-color-swatch:hover {
+  transform: scale(1.1);
+}
+.collab-color-swatch.active {
+  border-color: #333;
+}
+.collab-icon-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: #999;
+  margin: 6px 0 3px;
+}
+.collab-icon-group-label:first-child {
+  margin-top: 0;
+}
+.collab-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+}
+.collab-icon-btn {
   border: 1px solid #ddd;
-  border-radius: 3px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #444;
+}
+.collab-icon-btn:hover {
+  background: #eee;
+}
+.collab-icon-btn.active {
+  border-color: #4a90e2;
+  background: #eaf2fc;
+  color: #2b6cb0;
+}
+.collab-title-input {
+  width: 100%;
+  margin-bottom: 6px;
   font-size: 12px;
   padding: 4px 6px;
-  cursor: pointer;
-  background: #f9f9f9;
-  font-family: system-ui, -apple-system, sans-serif;
-  min-width: 58px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
 }
-.rv-control select:hover {
-  border-color: #999;
+.collab-desc-input {
+  width: 100%;
+  margin-bottom: 6px;
+  font-size: 12px;
 }
-
-/* ── Basemap accordion with thumbnail grid ── */
-
-.ld-bases-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.collab-marker-audit-notice {
+  color: #9aa4ad;
+  font-size: 10px;
+  line-height: 1.3;
+  margin-top: 6px;
+}
+.collab-form-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 6px;
+}
+
+/* ── Right-click "add marker to…" layer picker (multiple visible layers) ── */
+.collab-context-menu {
+  position: absolute;
+  transform: translate(-4px, -4px);
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  padding: 4px;
+  min-width: 180px;
+  max-width: 260px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.collab-context-menu-header {
+  color: #888;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding: 4px 8px 2px;
+}
+.collab-context-menu-items {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.collab-context-menu-item {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-context-menu-item:hover {
+  background: #f0f4f9;
+}
+
+/* ── RainViewer radar playback (Leaflet control, bottom-left above Legend) ──
+   Collapsed to a chip by default; the chip opens the scrubber panel. Its
+   width is set from the map's width in rainviewer.js (fitToMap). */
+.rv-control {
+  background: #fff;
+  color: #333;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  user-select: none;
+  overflow: visible;
+}
+.rv-control button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 7px;
+  border-radius: 4px;
+}
+.rv-control button:hover:not(:disabled) {
+  background: #f0f2f5;
+  border-color: #ccd2d9;
+}
+.rv-control button:disabled {
+  cursor: default;
+}
+
+.rv-chip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+}
+.rv-chip .rv-play {
+  width: 26px;
+}
+.rv-chip .rv-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.rv-chip .rv-title {
+  font-weight: 600;
+}
+/* Fixed widths so the chip doesn't change size as the frames tick over. */
+.rv-chip .rv-timestamp {
+  display: inline-block;
+  min-width: 5ch;
+  font-variant-numeric: tabular-nums;
+}
+.rv-chip .rv-chevron {
+  font-size: 10px;
+  opacity: 0.6;
+}
+.rv-control .rv-age {
+  min-width: 11ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #8a5a00;
+  background: #fff3d6;
+}
+.rv-control .rv-age.is-latest {
+  color: #1d6b35;
+  background: #e3f4e8;
+}
+
+.leaflet-bottom.rv-corner-raised {
+  z-index: 1001;
+}
+
+.rv-panel {
+  border-top: 1px solid #e5e7eb;
+  padding: 6px 8px 8px;
+}
+.rv-panel[hidden] {
+  display: none;
+}
+.rv-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.rv-slider {
+  flex: 1 1 auto;
+  min-width: 50px;
+  cursor: pointer;
+}
+.rv-control .rv-speed {
+  flex: 0 0 auto;
+  width: auto;
+  border: 1px solid #ccd2d9;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 2px 4px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+}
+.rv-control.rv-narrow .rv-speed {
+  display: none;
+}
+
+.rv-legend {
+  margin-top: 6px;
+}
+.rv-legend-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 2px;
+}
+.rv-legend-bar {
+  display: flex;
+  height: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+.rv-swatch {
+  flex: 1;
+  position: relative;
+  cursor: help;
+}
+.rv-swatch-tip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 1001;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.rv-swatch:hover .rv-swatch-tip {
+  opacity: 1;
+}
+
+.dark-mode .rv-control {
+  color: #ddd;
+}
+.dark-mode .rv-control button:hover:not(:disabled) {
+  background: #3a3a3a;
+  border-color: #555;
+}
+.dark-mode .rv-panel {
+  border-top-color: #444;
+}
+.dark-mode .rv-control .rv-speed {
+  background: #3a3a3a;
+  border-color: #555;
+}
+.dark-mode .rv-legend-title {
+  color: #bbb;
+}
+.dark-mode .rv-control .rv-age {
+  color: #ffd27a;
+  background: #4a3a14;
+}
+.dark-mode .rv-control .rv-age.is-latest {
+  color: #8fdca6;
+  background: #1f3d29;
+}
+
+/* ── Basemap section: thumbnail tiles ── */
+
+.ld-bases {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .ld-base-tile {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  cursor: pointer;
+  align-items: stretch;
+  gap: 3px;
   border-radius: 6px;
   padding: 3px;
   border: 2px solid transparent;
+  background: none;
+  color: #444;
   transition: border-color 0.15s;
 }
 
@@ -2692,29 +5636,26 @@ overflow: hidden;
   border-color: #90caf9;
 }
 
+.ld-base-tile:focus-visible {
+  outline: 2px solid #86b7fe;
+}
+
 .ld-base-tile.active {
   border-color: #1a73e8;
 }
 
 .ld-base-thumb {
-  width: 48px;
-  height: 48px;
+  width: 100%;
+  height: 60px;
   border-radius: 4px;
-  background-size: cover;
-  background-position: center;
+  object-fit: cover;
   background-color: #e0e0e0;
 }
 
 .ld-base-name {
-  font-size: 9px;
+  font-size: 11px;
+  line-height: 1.2;
   text-align: center;
-  margin-top: 2px;
-  line-height: 1.1;
-  color: #444;
-  max-width: 54px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* header layout: bar + small hide button */
@@ -2726,6 +5667,13 @@ overflow: hidden;
 .alerts__btn {
   flex: 1 1 auto;
   text-align: left;
+}
+
+/* Spelled out, not left to the browser's button default: that's black in
+   desktop Chrome but the system blue on iPadOS. (Dark mode sets its own.) */
+.alerts__btn,
+.alerts__hide-btn {
+  color: #000;
 }
 
 .alerts__hide-btn {
@@ -2860,6 +5808,59 @@ input[type='search']::-ms-clear {
   border-color: #ffc107;
 }
 
+/* ── Responsive toolbar (Teams / Incidents panes) ──
+   Panes sit in a resizable sidebar, so viewport-based media queries can't
+   react to the sidebar getting narrow — use container queries instead.
+   Scoped to the toolbar row (not .pane) so it doesn't hand the table's
+   overflow:auto region layout containment, which would break the other
+   position:fixed dropdown menus nested in the table rows that rely on an
+   unconstrained ancestor to escape that clipping. */
+.pane-toolbar {
+  container-type: inline-size;
+  container-name: toolbar-pane;
+}
+
+.toolbar-search {
+  flex: 3 1 240px;
+  min-width: 110px;
+  max-width: 420px;
+}
+
+/* The label pill has Bootstrap's .flex-grow-1 utility, which competes with
+   the search box (also flex-grow) for leftover row space. Weight the search
+   box's growth higher so it claims space first; once it hits max-width,
+   the pill absorbs whatever's left, so it still fills the row. */
+.toolbar-label {
+  flex-grow: 1 !important;
+  max-width: 55%;
+}
+
+.toolbar-overflow {
+  display: none;
+}
+
+/* Toolbar dropdowns (filter + overflow menus) sit right above the table's
+   sticky thead (z-index: 1050) and would otherwise render underneath it
+   wherever they overlap. */
+.pane-toolbar .dropdown-menu {
+  z-index: 1051;
+}
+
+@container toolbar-pane (max-width: 520px) {
+  .toolbar-collapsible {
+    display: none !important;
+  }
+  .toolbar-overflow {
+    display: inline-block;
+  }
+}
+
+@container toolbar-pane (max-width: 360px) {
+  .toolbar-label {
+    display: none !important;
+  }
+}
+
 /* hide popups + tooltips while hotkey held */
 .map-popups-hidden .leaflet-popup-pane,
 .map-popups-hidden .leaflet-tooltip-pane {
@@ -2879,6 +5880,15 @@ input[type='search']::-ms-clear {
 .images-button {
   color: var(--bs-secondary-color) !important;
   font-size: 13px;
+  cursor: pointer;
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+
+/* Muted at rest, so make it read as clickable on hover/focus. */
+.images-button:hover,
+.images-button:focus-visible {
+  color: var(--bs-link-hover-color) !important;
+  transform: scale(1.25);
 }
 
 .leaflet-control-geosearch form {
@@ -2920,6 +5930,29 @@ input[type='search']::-ms-clear {
   min-height: 0;              /* critical for flex overflow */
 }
 
+/* Spotlight help modal */
+.spotlight-help-command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1rem;
+}
+
+.spotlight-help-command code {
+  flex: 0 0 13rem;
+}
+
+.spotlight-help-keys {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+}
+
+.spotlight-help-keys > :nth-child(odd) {
+  justify-self: start;
+}
+
 .spotlight-secondary {
   display: -webkit-box;
   -webkit-line-clamp: 2;      /* 1 or 2 */
@@ -2941,8 +5974,8 @@ input[type="search"]:focus {
   box-shadow: none;
 }
 
-/* ── Job search autosuggest dropdown ── */
-.job-search-suggestions {
+/* ── Toolbar search autosuggest dropdown (incidents + teams) ── */
+.search-suggestions {
   position: fixed;
   z-index: 9999;
   background: #fff;
@@ -2955,7 +5988,7 @@ input[type="search"]:focus {
   font-size: 11.5px;
 }
 
-.job-search-suggestions li {
+.search-suggestions li {
   display: flex;
   align-items: center;
   padding: 4px 8px;
@@ -2963,19 +5996,19 @@ input[type="search"]:focus {
   gap: 6px;
 }
 
-.job-search-suggestions li:hover,
-.job-search-suggestions li.active {
+.search-suggestions li:hover,
+.search-suggestions li.active {
   background: #e9ecef;
 }
 
-.job-search-suggestions .suggestion-label {
+.search-suggestions .suggestion-label {
   flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.job-search-suggestions .suggestion-category {
+.search-suggestions .suggestion-category {
   flex: 0 0 auto;
   font-size: 9.5px;
   font-weight: 500;
@@ -2983,12 +6016,177 @@ input[type="search"]:focus {
 }
 
 /* Dark-mode support */
-.dark-mode .job-search-suggestions {
+.dark-mode .search-suggestions {
   background: #2b2b2b;
   border-color: #555;
 }
 
-.dark-mode .job-search-suggestions li:hover,
-.dark-mode .job-search-suggestions li.active {
+.dark-mode .search-suggestions li:hover,
+.dark-mode .search-suggestions li.active {
   background: #3a3a3a;
+}
+
+/* SignalR connection status banner -- visible (the whole page's live data
+   depends on this connection, so a silent drop shouldn't look like nothing
+   is happening), but a calm/informational cautionary tone rather than a
+   critical-error one: most of what it reports is transient (initial
+   connect, a brief reconnect blip), not an emergency. */
+.signalr-status-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  padding: 6px 12px;
+  background: #fff3cd;
+  color: #664d03;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.signalr-status-banner__icon {
+  font-size: 15px;
+}
+
+/* Satellite-tracked asset marker next to "Last seen"; a red fa-slash is
+   stacked over it when the tracker's satelliteStatus isn't ACTIVE. */
+.sat-icon {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sat-icon--inactive .fa-satellite {
+  opacity: 0.55;
+}
+
+/* Centre the slash on the satellite glyph itself so it lines up regardless of
+   the surrounding line-height (Leaflet popup vs library card). */
+.sat-icon__slash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  line-height: 1;
+  color: #dc3545;
+}
+
+/* ── Restore Defaults modal ── */
+.config-reset-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.config-reset-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.config-reset-group .form-check-input {
+  flex: none;
+  margin-top: 3px;
+}
+.config-reset-label {
+  display: block;
+  font-weight: 500;
+}
+.config-reset-detail {
+  display: block;
+  font-size: 11.5px;
+  color: #6c757d;
+}
+
+/* Popups never wider than the map (--map-w, see resize.js). On a map
+   narrower than their content -- a tablet, or a squeezed desktop window --
+   the content scrolls sideways inside the popup instead of being cut off
+   at the map's edge. */
+.leaflet-popup-content {
+  max-width: calc(var(--map-w, 100vw) - 90px);
+  overflow-x: auto;
+}
+
+/* ===== Touch screens (iPad etc.) =====
+   (pointer: coarse) only matches when the main pointer is a finger, so mouse
+   and trackpad users keep the desktop sizes. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@media (pointer: coarse) {
+  /* Splitters wide enough to grab with a finger. */
+  .vsplit {
+    width: 16px;
+    flex-shrink: 0;
+  }
+  .hsplit {
+    height: 16px;
+  }
+  /* iOS zooms the page when focusing a field under 16px, and leaves it zoomed. */
+  input.form-control,
+  select.form-select,
+  textarea.form-control {
+    font-size: 16px;
+  }
+  /* Finger-sized hit areas for the small controls. The negative margins
+     cancel the padding, so the rows lay out exactly as before. */
+  .btn.btn-link.p-0 {
+    padding: 6px !important;
+    margin: -6px;
+  }
+  .jobstatus-dropdown-btn {
+    padding: 8px 0;
+    margin: -6px 0 -8px;
+  }
+  .alerts__hide-btn {
+    padding: 10px 8px;
+    margin: -10px -4px -10px 0;
+  }
+  .sidebar .btn-sm,
+  .team-status-button,
+  #teamMenu,
+  #jobMenu {
+    min-height: 32px;
+  }
+  .sidebar .btn-sm {
+    min-width: 32px;
+  }
+  /* The py-0 (icon) buttons are now taller than their line box, so centre
+     the icon explicitly (iOS otherwise leaves it riding high). Labelled
+     buttons keep their own padding and inline layout, so their text wraps
+     after the icon as on desktop. */
+  .sidebar .btn-sm.py-0,
+  #teamMenu,
+  #jobMenu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3em;
+  }
+  .ld-rail-item {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  /* No double-tap-to-zoom on controls, so taps register straight away. */
+  button,
+  a,
+  label,
+  input,
+  select,
+  .btn,
+  .dropdown-item,
+  th,
+  td {
+    touch-action: manipulation;
+  }
 }

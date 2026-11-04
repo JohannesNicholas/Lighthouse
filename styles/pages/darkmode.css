@@ -359,6 +359,15 @@ body.dark-mode .dropdown-item:active {
   color: #fff;
 }
 
+/* Invalid options (e.g. statuses a tasking can't move to) - must stay visibly
+   greyed out, otherwise they read the same as the valid ones. !important to
+   beat the `.row-* *` and `fieldset *` text overrides the menus sit inside */
+body.dark-mode .dropdown-item.disabled,
+body.dark-mode .dropdown-item:disabled {
+  color: #6c6c6c !important;
+  background-color: transparent;
+}
+
 body.dark-mode .dropdown-divider {
   border-color: #444;
 }
@@ -396,6 +405,27 @@ body.dark-mode .modal-body p,
 body.dark-mode .modal-body span,
 body.dark-mode .modal-body div {
   color: #e0e0e0;
+}
+
+/* Tag pills (tagFactory.js classes, e.g. the Ops Log modal) set their own
+   text colour in tasking.css -- the generic span rules above would otherwise
+   wash out the selected pills (white background, coloured text). span.label.tag
+   outranks body.dark-mode .modal-body span / .accordion-body span. */
+body.dark-mode span.label.tag {
+  color: #fff;
+}
+
+body.dark-mode span.label.tag-note-selected {
+  color: #6e663c;
+}
+
+body.dark-mode span.label.tag-further-action-selected {
+  color: #ee0039;
+}
+
+body.dark-mode .label.tag span,
+body.dark-mode .label.tag i {
+  color: inherit;
 }
 
 /* Accordion */
@@ -461,6 +491,15 @@ body.dark-mode .row-rescue * {
   color: #e0e0e0 !important;
 }
 
+body.dark-mode .row-rescue-fr1 {
+  background-color: #521c16 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .row-rescue-fr1 * {
+  color: #e0e0e0 !important;
+}
+
 body.dark-mode .row-priority {
   background-color: #54483a !important;
   color: #e0e0e0 !important;
@@ -486,6 +525,13 @@ body.dark-mode .row-general {
 
 body.dark-mode .row-general * {
   color: #e0e0e0 !important;
+}
+
+/* Tasking status pills on light backgrounds (En route / On site) keep dark
+   text - the row rules above would otherwise paint them light-on-light */
+body.dark-mode .team-status-button.bg-info,
+body.dark-mode .team-status-button.bg-warning {
+  color: #000 !important;
 }
 
 /* Team row colorings */
@@ -537,6 +583,18 @@ body.dark-mode .leaflet-container {
   background-color: #1a1a1a;
 }
 
+/* Map layer text labels sit on the basemap, which stays light in dark mode,
+   so keep their light-mode dark text against the white halo rather than
+   letting the blanket `body.dark-mode div` colour turn them pale. */
+body.dark-mode .zone-label,
+body.dark-mode .unit-label {
+  color: #212529;
+}
+
+body.dark-mode .frao-label {
+  color: #333;
+}
+
 body.dark-mode .leaflet-popup-content {
   background-color: #2d2d2d;
   color: #e0e0e0;
@@ -549,6 +607,108 @@ body.dark-mode .leaflet-popup-content-wrapper {
 
 body.dark-mode .leaflet-popup-tip {
   background-color: #2d2d2d;
+}
+
+body.dark-mode .lhq-popup__header,
+body.dark-mode .lhq-popup__contacts > div { border-color: #444; }
+body.dark-mode .lhq-popup__stat { background: #3a3a3a; }
+body.dark-mode .lhq-popup__stat-label,
+body.dark-mode .lhq-popup__muted,
+body.dark-mode .lhq-popup__section,
+body.dark-mode .lhq-popup__contacts dt { color: #adb5bd; }
+body.dark-mode .lhq-status { background: #495057; color: #e9ecef; }
+body.dark-mode .lhq-status--monitoring { background: #0f5132; color: #d1e7dd; }
+body.dark-mode .lhq-status--unavailable { background: #842029; color: #f8d7da; }
+body.dark-mode .lhq-popup__tag { background: #052c65; border-color: #084298; color: #9ec5fe; }
+
+body.dark-mode .leaflet-tooltip.job-tooltip {
+  background-color: #2d2d2d;
+  color: #e0e0e0;
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+/* Only the "top" arrow exists -- wireJobTooltip() always opens this
+   tooltip with direction: 'top'. */
+body.dark-mode .leaflet-tooltip.job-tooltip.leaflet-tooltip-top:before {
+  border-top-color: #2d2d2d;
+}
+body.dark-mode .job-tooltip__addr {
+  color: #cfcfcf;
+}
+body.dark-mode .job-tooltip__meta {
+  color: #9a9a9a;
+}
+body.dark-mode .job-tooltip__sit {
+  color: #cfcfcf;
+}
+body.dark-mode .job-tooltip__badge {
+  background: rgba(255, 255, 255, 0.09);
+  color: #e0e0e0;
+}
+body.dark-mode .job-tooltip__badge--warn {
+  background: rgba(217, 119, 6, 0.25);
+  color: #fbbf24;
+}
+body.dark-mode .tsm-track::before { background: #495057; }
+body.dark-mode .tsm-step { color: #6c757d; }
+body.dark-mode .tsm-step i { background: #212529; border-color: #6c757d; }
+body.dark-mode .tsm-step.done,
+body.dark-mode .tsm-step small { color: #adb5bd; }
+body.dark-mode .tsm-step.cur { color: #f8f9fa; }
+body.dark-mode .tsm-now { background: rgba(255, 255, 255, 0.05); border-color: #495057; }
+body.dark-mode .tsm-edit,
+body.dark-mode .tsm-eu-quick button { background: transparent; color: #93c5fd; border-color: #3b82f6; }
+body.dark-mode .tsm-edit:hover,
+body.dark-mode .tsm-eu-quick button:hover { background: #3b82f6; color: #fff; }
+body.dark-mode .tsm-item.tsm-stop { color: #fca5a5; }
+body.dark-mode .tsm-sep,
+body.dark-mode .tsm-foot { border-color: #495057; }
+body.dark-mode .tsm-link { color: #93c5fd; }
+body.dark-mode .tsm-field-title { color: #f8f9fa; }
+body.dark-mode .tsm-correct:hover { background: rgba(255, 255, 255, 0.06); }
+body.dark-mode .tsm-warn,
+body.dark-mode .tsm-ack { background: rgba(217, 119, 6, 0.18); border-color: rgba(251, 191, 36, 0.5); color: #fde68a; }
+body.dark-mode .tsm-warn b { color: #fef3c7; }
+body.dark-mode .tsm-back-item { background: transparent; border-color: rgba(251, 191, 36, 0.5); color: #f8f9fa; }
+body.dark-mode .tsm-back-item:hover { background: rgba(217, 119, 6, 0.18); }
+body.dark-mode .tsm-back-item small { color: #fbbf24; }
+body.dark-mode .tsm-eu-box { border-color: #495057; }
+body.dark-mode .tsm-eu-new { background: rgba(59, 130, 246, 0.15); border-color: #3b82f6; }
+body.dark-mode .tsm-eu-new .v,
+body.dark-mode .tsm-eu-new .r { color: #93c5fd; }
+body.dark-mode .tsm-eu-label { color: #ced4da; }
+body.dark-mode .tsm-eu-reset { color: #adb5bd; }
+body.dark-mode .eta-chip {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(96, 165, 250, 0.45);
+  color: #93c5fd;
+}
+body.dark-mode .eta-chip--soon {
+  background: rgba(217, 119, 6, 0.22);
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fbbf24;
+}
+body.dark-mode .eta-chip--late {
+  background: rgba(220, 38, 38, 0.22);
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #fca5a5;
+}
+body.dark-mode .eta-line {
+  color: #93c5fd;
+}
+body.dark-mode .eta-line--soon {
+  color: #fbbf24;
+}
+body.dark-mode .eta-line--late {
+  color: #fca5a5;
+}
+body.dark-mode .action-required-button {
+  color: #fbbf24;
+}
+
+body.dark-mode .images-button:hover,
+body.dark-mode .images-button:focus-visible {
+  color: #5da3ff !important;
 }
 
 body.dark-mode .leaflet-control {
@@ -594,6 +754,12 @@ body.dark-mode .leaflet-control-attribution,
 body.dark-mode .leaflet-control-scale {
   background-color: #2d2d2d !important;
   border-color: #444 !important;
+}
+
+/* RainViewer radar playback control (mapLayers/rainviewer.js) */
+body.dark-mode .leaflet-control.rv-control {
+  background-color: #2d2d2d !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
 }
 
 /* Map alerts control (custom .alerts UI) */
@@ -710,6 +876,58 @@ body.dark-mode .layers-drawer .ld-overlay-btn {
 body.dark-mode .layers-drawer .ld-overlay-btn:hover {
   background: #373737 !important;
 }
+
+body.dark-mode .ld-rail,
+body.dark-mode .ld-narrow .ld-rail { border-color: #444 !important; }
+body.dark-mode .ld-rail-sep { background: #444; }
+body.dark-mode .ld-rail-item { color: #e0e0e0; }
+body.dark-mode .ld-rail-item:hover { background: #373737; }
+body.dark-mode .ld-rail-item[aria-current="true"] { background: #5a6068; color: #fff; }
+body.dark-mode .ld-rail-count { background: #444a52; color: #e0e0e0; }
+body.dark-mode .ld-narrow .ld-rail-item { border-color: #555; }
+body.dark-mode .ld-pane-title { color: #cfd5de; }
+body.dark-mode .ld-empty { color: #9aa3ae; }
+body.dark-mode .ld-base-tile { color: #e0e0e0; }
+body.dark-mode .ld-base-tile.active { border-color: #7aa7ff; }
+
+/* Layer load status */
+body.dark-mode .layers-drawer .ld-status-ok { background: #173325; color: #6fd29a; }
+body.dark-mode .layers-drawer .ld-status-zero { background: #33373d; color: #aab2bd; }
+body.dark-mode .layers-drawer .ld-status-warn { background: #3a2f12; color: #e8bd55; }
+body.dark-mode .layers-drawer .ld-status-error { background: #3e1d1a; color: #f2867b; }
+body.dark-mode .layers-drawer .ld-status-spin { border-color: #2a3a55; border-top-color: #7aa7ff; }
+body.dark-mode .layers-drawer .ld-status-detail-muted { color: #9aa3ae; }
+body.dark-mode .layers-drawer .ld-overlay-btn.active .ld-status-detail-muted { color: rgba(255, 255, 255, 0.85); }
+body.dark-mode .layers-drawer .ld-status-detail-warn { color: #e8bd55; }
+body.dark-mode .layers-drawer .ld-status-detail-error,
+body.dark-mode .layers-drawer .ld-status-detail-error span { color: #f2867b; }
+body.dark-mode .layers-drawer .ld-status-detail-warn span { color: #e8bd55; }
+body.dark-mode .layers-drawer .ld-overlay-btn.ld-status-failed {
+  background: #3a2220 !important;
+  border-color: #7a3a33 !important;
+}
+body.dark-mode .layers-drawer .ld-load-ring { border-color: #2a3a55; border-top-color: #7aa7ff; background: #2d2d2d; box-shadow: 0 0 0 1px #2d2d2d; }
+body.dark-mode .layers-drawer .ld-load-badge { color: #fff; border-color: #2d2d2d; }
+
+/* Layer presets */
+body.dark-mode .ld-preset-action,
+body.dark-mode .ld-preset-icon,
+body.dark-mode .ld-preset-edit { border-color: #555; color: #cfd5de; }
+body.dark-mode .ld-preset-action:hover:not(:disabled),
+body.dark-mode .ld-preset-icon:hover { background: #373737; color: #fff; }
+body.dark-mode .ld-preset-pin[aria-pressed="true"],
+body.dark-mode .ld-preset-icon[aria-checked="true"] { background: #5a6068; border-color: #5a6068; color: #fff; }
+body.dark-mode .ld-preset-new { border-color: #444; }
+body.dark-mode .ld-preset-new-info { color: #9aa3ae; }
+body.dark-mode .ld-preset-form .form-control { background: #333; color: #e0e0e0; border-color: #555; }
+body.dark-mode .layer-preset-bar .lp-btn {
+  background: #2d2d2d !important;
+  color: #e0e0e0 !important;
+  border-top-color: #444 !important;
+}
+body.dark-mode .layer-preset-bar .lp-btn:hover { background: #373737 !important; color: #fff !important; }
+body.dark-mode .layer-preset-bar .lp-btn.active { background: #5a6068 !important; color: #fff !important; }
+body.dark-mode .layer-preset-bar .lp-part { background: #cfd5de; }
 
 /* Sidebar collapse control button */
 body.dark-mode .sidebar-toggle .btn,
@@ -1031,6 +1249,83 @@ body.dark-mode .nav-link.active {
   border-color: #0d6efd;
 }
 
+/* Config modal left rail */
+body.dark-mode .config-panes,
+body.dark-mode .config-rail,
+body.dark-mode .config-rail .config-rail-guide {
+  border-color: #444;
+}
+
+body.dark-mode .config-rail .nav-link {
+  color: #adb5bd;
+}
+
+body.dark-mode .config-rail .nav-link:hover {
+  background: #333;
+  color: #e0e0e0;
+}
+
+body.dark-mode .config-rail .nav-link.active {
+  background: #2b3a55;
+  color: #6ea8fe;
+}
+
+body.dark-mode .cfg-subhead {
+  color: #adb5bd;
+}
+
+body.dark-mode .cfg-field .d {
+  color: #adb5bd;
+}
+
+body.dark-mode .cfg-readout {
+  background: #262626;
+  border-color: #444;
+}
+
+body.dark-mode .cfg-readout-h,
+body.dark-mode .cfg-readout-note {
+  color: #8b929c;
+}
+
+body.dark-mode .cfg-readout-sub {
+  color: #adb5bd;
+}
+
+body.dark-mode .cfg-seg,
+body.dark-mode .cfg-seg-btn,
+body.dark-mode .cfg-chip {
+  border-color: #495057;
+}
+
+body.dark-mode .cfg-seg-btn,
+body.dark-mode .cfg-chip {
+  background: #2d2d2d;
+  color: #e0e0e0;
+}
+
+body.dark-mode .cfg-seg-btn:hover,
+body.dark-mode .cfg-chip:hover {
+  background: #3a3a3a;
+}
+
+body.dark-mode .cfg-seg-btn.active,
+body.dark-mode .cfg-chip.active {
+  background: #0d6efd;
+  border-color: #0d6efd;
+  color: #fff;
+}
+
+body.dark-mode .cfg-live-pill.on {
+  background: #1a2c22;
+  color: #4bbd83;
+}
+
+body.dark-mode .cfg-live-pill.off {
+  background: #333;
+  color: #adb5bd;
+}
+
 /* Collapse elements */
 body.dark-mode .collapse {
   background-color: #2d2d2d;
@@ -1113,3 +1408,99 @@ body.dark-mode .fw-semibold,
 body.dark-mode .fw-normal {
   color: #e0e0e0;
 }
+
+/* Bootstrap 5.3 "subtle" background + "emphasis" text utilities.
+   These resolve to --bs-*-bg-subtle / --bs-*-text-emphasis, which only
+   flip to dark values under [data-bs-theme="dark"]. This app's dark mode
+   is a plain body class, so Bootstrap keeps serving the light values
+   (pale fill, dark text) -- and the base `body.dark-mode .badge` rule
+   above then forces the text to #e0e0e0, leaving unreadable pale-on-pale
+   chips (Search HQ chip, layer event/marker-count badges, "Subscribed").
+   Restate them with the same colours Bootstrap's own dark theme uses. */
+body.dark-mode .bg-primary-subtle {
+  background-color: #031633 !important;
+}
+
+body.dark-mode .bg-secondary-subtle {
+  background-color: #161719 !important;
+}
+
+body.dark-mode .bg-success-subtle {
+  background-color: #051b11 !important;
+}
+
+body.dark-mode .bg-info-subtle {
+  background-color: #032830 !important;
+}
+
+body.dark-mode .bg-warning-subtle {
+  background-color: #332701 !important;
+}
+
+body.dark-mode .bg-danger-subtle {
+  background-color: #2c0b0e !important;
+}
+
+body.dark-mode .text-primary-emphasis {
+  color: #6ea8fe !important;
+}
+
+body.dark-mode .text-secondary-emphasis {
+  color: #a7acb1 !important;
+}
+
+body.dark-mode .text-success-emphasis {
+  color: #75b798 !important;
+}
+
+body.dark-mode .text-info-emphasis {
+  color: #6edff6 !important;
+}
+
+body.dark-mode .text-warning-emphasis {
+  color: #ffda6a !important;
+}
+
+body.dark-mode .text-danger-emphasis {
+  color: #ea868f !important;
+}
+
+body.dark-mode .border-primary-subtle {
+  border-color: #084298 !important;
+}
+
+body.dark-mode .border-info-subtle {
+  border-color: #087990 !important;
+}
+
+/* Layout picker preview (config modal -> Layout). The mock-up is styled off
+   --bs-body-bg / --bs-secondary-bg / --bs-border-color / --bs-emphasis-color,
+   which stay light without [data-bs-theme="dark"]. */
+body.dark-mode .layout-tile.active {
+  background: rgba(13, 110, 253, 0.18);
+}
+
+body.dark-mode .layout-tile .layout-preset-preview .preview-block--teams,
+body.dark-mode .layout-tile .layout-preset-preview .preview-block--tasking {
+  background:
+    linear-gradient(#383838, #383838) top / 100% 1.6em no-repeat,
+    repeating-linear-gradient(to bottom, transparent 0 0.75em, rgba(255, 255, 255, 0.08) 0.75em 1.05em) #383838;
+}
+
+body.dark-mode .layout-tile .layout-preset-preview .preview-block--map {
+  background: #2f3a2c;
+}
+
+body.dark-mode .layout-preset-preview {
+  background: #1f1f1f;
+  border-color: #444;
+}
+
+body.dark-mode .layout-preset-preview .preview-block {
+  background: #383838;
+  border-color: #555;
+  color: #cfcfcf;
+}
+
+/* Restore Defaults modal */
+body.dark-mode .config-reset-detail { color: #9aa3ae; }

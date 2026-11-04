@@ -5,6 +5,7 @@ import { Entity } from "./Entity.js";
 import { Address } from "./Address.js";
 import { Tag } from "./Tag.js";
 import { Sector } from "./Sector.js";
+import { primaryEtaTasking } from "./Tasking.js";
 import { UnacceptedNotification } from "./UnacceptedNotification.js";
 import { openURLInBeacon } from '../utils/chromeRunTime.js';
 import { jobsToUI } from "../utils/jobTypesToUI.js";
@@ -12,16 +13,41 @@ import { jobsToUI } from "../utils/jobTypesToUI.js";
 import { InstantTaskViewModel } from '../viewmodels/InstantTask.js';
 
 import { Enum } from "../utils/enum.js";
+import { getSingleFetchCooldownMs } from "../signalr/pushMode.js";
+
+// The bulk search's lean model (ViewModelType=2) carries combined
+// CallerName/CallerNumber/ContactName/ContactNumber where the full model has
+// split First/Last/PhoneNumber fields. Map lean payloads onto the full field
+// names. A name already held split (from a full GET) is left alone when it
+// joins to the same value, so lean polls don't flip it to "Jane Smith" + "".
+export function splitLeanContactFields(d, job = null) {
+    if (!['CallerName', 'CallerNumber', 'ContactName', 'ContactNumber'].some(k => d[k] !== undefined)) return d;
+    const out = { ...d };
+    for (const [P, p] of [['Caller', 'caller'], ['Contact', 'contact']]) {
+        const name = d[`${P}Name`];
+        if (name !== undefined && d[`${P}FirstName`] === undefined) {
+            const held = job ? [job[`${p}FirstName`](), job[`${p}LastName`]()].filter(Boolean).join(' ') : null;
+            if (held !== (name || '')) {
+                out[`${P}FirstName`] = name || '';
+                out[`${P}LastName`] = '';
+            }
+        }
+        const number = d[`${P}Number`];
+        if (number !== undefined && d[`${P}PhoneNumber`] === undefined) out[`${P}PhoneNumber`] = number;
+    }
+    return out;
+}
 
 export function Job(data = {}, deps = {}) {
     const self = this;
+    data = splitLeanContactFields(data);
 
     // ---- injected adapters (all optional, safe defaults) ----
     const {
         makeJobLink = (_id) => "#",
         fetchJobTasking = (_jobId, cb) => cb(null),
         fetchJobById = (_jobId, cb) => cb(null),
-        flyToJob = (_job) => {/* noop */ },
+        flyToJob = (_job, _opts) => {/* noop */ },
         attachAndFillTimelineModal = (_job) => { /* noop */ },
         fetchUnacknowledgedJobNotifications = async (_job) => ([]),
         acknowledgeUnacceptedNotification = async (_notificationId) => ({}),
@@ -71,8 +97,13 @@ export function Job(data = {}, deps = {}) {
     self.permissionToEnterPremises = ko.observable(!!data.PermissionToEnterPremises);
     self.howToEnterPremises = ko.observable(data.HowToEnterPremises ?? null);
     self.jobReceived = ko.observable(data.JobReceived ?? null);
-    self.jobPriorityType = ko.observable(data.JobPriorityType || null); // {Id,Name,Description}
-    self.jobStatusType = ko.observable(data.JobStatusType || null);     // {Id,Name,Description}
+    // Some sources (e.g. the jobCreated/jobUpdated push notification) only
+    // carry JobPriorityTypeId/JobStatusTypeId, not the full object -- same
+    // fallback updateFromJson uses below, so a job constructed straight
+    // from one of those isn't left with a blank status/priority (which
+    // would otherwise fail jobMatchesConfigFilters' status check).
+    self.jobPriorityType = ko.observable(data.JobPriorityType || _resolveEnumById(Enum.JobPriorityType, data.JobPriorityTypeId) || null); // {Id,Name,Description}
+    self.jobStatusType = ko.observable(data.JobStatusType || _resolveEnumById(Enum.JobStatusType, data.JobStatusTypeId) || null);     // {Id,Name,Description}
     self.jobType = ko.observable(data.JobType || null);                 // {Id,Name,...}
     self.entityAssignedTo = new Entity(data.EntityAssignedTo || {});
     self.lga = ko.observable(data.LGA ?? "");
@@ -109,6 +140,18 @@ export function Job(data = {}, deps = {}) {
 
     // ---- ICEMS agencies involved ----
     self._icemsAgenciesRaw = ko.observableArray([]);
+
+    // Unlike _findEnumDescription below, returns undefined (not a placeholder)
+    // on no match -- callers use this to decide whether to overwrite an
+    // existing value at all, so a fake "Unknown" entry would be worse than
+    // just leaving the previous value in place.
+    function _resolveEnumById(enumObj, id) {
+        if (id == null) return undefined;
+        for (const key in enumObj) {
+            if (enumObj[key].Id === id) return enumObj[key];
+        }
+        return undefined;
+    }
 
     function _findEnumDescription(enumObj, id) {
         for (const key in enumObj) {
@@ -187,6 +230,10 @@ export function Job(data = {}, deps = {}) {
     self.marker = null;  // will hold the L.Marker instance
     self.taskings = ko.observableArray(); //array of taskings
     self.sector = ko.observable(new Sector(data.Sector || {}));
+    // The lean bulk search and tasking payloads carry no Sector at all, so an
+    // empty sector() may just mean "not loaded yet". Only a payload with the
+    // key (full GET, Sector:null when unassigned) makes it known.
+    self.sectorKnown = ko.observable(data.Sector !== undefined);
     self.suppliers = ko.observableArray([]);
 
     // computed
@@ -286,16 +333,32 @@ export function Job(data = {}, deps = {}) {
     }
 
 
-    self.actionRequiredTagsDeduplicated = ko.pureComputed(() => {
-        const seen = new Set();
-        return self.actionRequiredTags().filter(tag => {
-            const name = tag.name().toLowerCase(); // Deduplicate by name (case-insensitive)
-            if (seen.has(name)) {
-                return false;
+    // One entry per distinct tag name (case-insensitive), each carrying how
+    // many raw actionRequiredTags share that name -- lets the pill list show
+    // "Callback ×2" inline instead of a separate count row/line above it.
+    self.actionRequiredTagsGrouped = ko.pureComputed(() => {
+        const groups = new Map();
+        const order = [];
+        self.actionRequiredTags().forEach(tag => {
+            const key = tag.name().toLowerCase();
+            if (!groups.has(key)) {
+                groups.set(key, { tag, count: 0 });
+                order.push(key);
             }
-            seen.add(name);
-            return true;
+            groups.get(key).count++;
         });
+        return order.map(key => {
+            const { tag, count } = groups.get(key);
+            return { tag, label: count > 1 ? `${tag.name()} ×${count}` : tag.name() };
+        });
+    });
+
+    // Counts raw actionRequiredTags, not the deduplicated list -- two
+    // identical-named tags are still two outstanding actions to resolve,
+    // even though the pill list below only ever shows one row for them.
+    self.actionRequiredCountLabel = ko.pureComputed(() => {
+        const count = self.actionRequiredTags().length;
+        return count === 1 ? "1 outstanding action" : `${count} outstanding actions`;
     });
 
     self.typeName = ko.pureComputed(() => (self.jobType() && self.jobType().Name) || self.type());
@@ -303,6 +366,8 @@ export function Job(data = {}, deps = {}) {
     self.tagsCsv = ko.pureComputed(() => self.tags().map(t => t.name()).join(", "));
     self.receivedAt = ko.pureComputed(() => (self.jobReceived() ? moment(self.jobReceived()).format("DD/MM/YYYY HH:mm:ss") : null));
     self.receivedAtShort = ko.pureComputed(() => (self.jobReceived() ? moment(self.jobReceived()).format("DD/MM/YY HH:mm:ss") : null));
+    self.receivedAtTimeShort = ko.pureComputed(() => (self.jobReceived() ? moment(self.jobReceived()).format("HH:mm:ss") : null));
+    self.receivedAtDateShort = ko.pureComputed(() => (self.jobReceived() ? moment(self.jobReceived()).format("DD/MM/YY") : null));
     self.latLongDisplay = ko.pureComputed(function () {
         var lat = self.address.latitude();
         var lng = self.address.longitude();
@@ -340,11 +405,22 @@ export function Job(data = {}, deps = {}) {
 
     self.lastDataUpdate = observable(new Date());
     self.lastTaskingDataUpdate = new Date();
+    // Separate from lastDataUpdate -- that's bumped by updateFromJson on
+    // every merge (push or fetch), which refreshData()'s cooldown can't use
+    // directly: a caller that merges push data and then calls refreshData()
+    // in the same tick would always see "just updated" and never actually
+    // fetch. This only tracks real REST fetches.
+    let _lastRefreshDataFetch = 0;
+    self.lastIcemsUpdate = 0;
+    // When actionRequiredTags was last merged (ms). Lets the batched
+    // unresolved-actions fetch skip jobs a per-job fetch updated while the
+    // batch was in flight.
+    self.lastActionTagsUpdate = 0;
 
-    // Minimum cooldown (ms) between single-job tasking fetches.
-    // Bulk/batch refreshes update lastTaskingDataUpdate directly,
-    // so this gate also prevents a single fetch right after a batch.
-    const SINGLE_FETCH_COOLDOWN_MS = 10_000;
+    // Minimum cooldown (ms) between single-job tasking fetches. Bulk/batch
+    // refreshes update lastTaskingDataUpdate directly, so this gate also
+    // prevents a single fetch right after a batch. Tighter when SignalR
+    // push is disabled -- see pushMode.js.
 
     self.drawJobTargetRing = function () {
         drawJobTargetRing(self);
@@ -367,6 +443,9 @@ export function Job(data = {}, deps = {}) {
         return moment(self.lastDataUpdate()).fromNow();
     });
 
+    // No per-job timer -- refreshed as part of the shared jobs/teams refresh
+    // cycle (fetchAllUnacceptedNotifications in main.js) and by push
+    // (NotificationAcknowledged/IUMReceived/UrgentIUMReceived).
     self.refreshUnacceptedNotifications = async function () {
         if (!self.icemsIncidentIdentifier()) return;
 
@@ -405,26 +484,22 @@ export function Job(data = {}, deps = {}) {
     };
 
 
-    // ---- UNACCEPTED NOTIFICATIONS POLLING ----
-    const unacceptedNotificationsInterval = makeFilteredInterval(() => {
-        // extra guard: only if ICEMS id exists
-        if (!self.icemsIncidentIdentifier()) return;
-        console.log("Polling unaccepted notifications for job", self.id());
-        self.refreshUnacceptedNotifications();
-    }, 30000, { runImmediately: true });
-
-    self.startUnacceptedNotificationsPolling = function () {
-        unacceptedNotificationsInterval.start();
-    };
-
-    self.stopUnacceptedNotificationsPolling = function () {
-        unacceptedNotificationsInterval.stop();
-    };
-
-    // ---- ICEMS INCIDENT POLLING (agencies involved) ----
-    self.refreshIcemsIncident = async function () {
+    // ICEMS agency data: refreshed when the job is expanded (toggleAndLoad)
+    // and by push (rsuReceived/iuaReceived/isuReceived in main.js) -- no
+    // periodic poll. Push calls pass force:true (an authoritative "this
+    // changed" signal shouldn't get swallowed by a cooldown); the
+    // expand-triggered call doesn't, so re-expanding right after push
+    // already refreshed it is a no-op.
+    self.refreshIcemsIncident = async function (opts = {}) {
         const icemsId = self.icemsIncidentIdentifier();
         if (!icemsId) return;
+
+        const force = opts.force === true;
+        if (!force && Date.now() - self.lastIcemsUpdate < getSingleFetchCooldownMs()) {
+            console.log("Skipping ICEMS incident fetch for job", self.id(), "due to cooldown");
+            return;
+        }
+        self.lastIcemsUpdate = Date.now();
 
         try {
             const data = await fetchIcemsIncident(icemsId);
@@ -436,45 +511,6 @@ export function Job(data = {}, deps = {}) {
         }
     };
 
-    const icemsIncidentInterval = makeFilteredInterval(() => {
-        if (!self.icemsIncidentIdentifier()) return;
-        self.refreshIcemsIncident();
-    }, 30000, { runImmediately: true });
-
-    self.startIcemsIncidentPolling = function () {
-        icemsIncidentInterval.start();
-    };
-
-    self.stopIcemsIncidentPolling = function () {
-        icemsIncidentInterval.stop();
-    };
-
-
-    // Unaccepted notifications polling: filtered in + ICEMS id (original logic)
-    self.shouldPollUnacceptedNotifications = ko.pureComputed(() => {
-        return self.icemsIncidentIdentifier() && self.isFilteredIn();
-    });
-
-    self.shouldPollUnacceptedNotifications.subscribe((shouldPoll) => {
-        if (shouldPoll) {
-            self.startUnacceptedNotificationsPolling();
-        } else {
-            self.stopUnacceptedNotificationsPolling();
-        }
-    });
-
-    // ICEMS agency polling: filtered in + expanded + ICEMS id (new logic)
-    self.shouldPollIcemsIncident = ko.pureComputed(() => {
-        return self.icemsIncidentIdentifier() && self.isFilteredIn() && self.expanded();
-    });
-
-    self.shouldPollIcemsIncident.subscribe((shouldPoll) => {
-        if (shouldPoll) {
-            self.startIcemsIncidentPolling();
-        } else {
-            self.stopIcemsIncidentPolling();
-        }
-    });
 
     self.toggleAndLoad = function () {
         if (!self.expanded()) {
@@ -523,6 +559,18 @@ export function Job(data = {}, deps = {}) {
         })
     );
 
+    // The tasking whose ETA/ETC matters most for this incident (soonest
+    // ETA, else soonest ETC) and its etaInfo -- drives the chip on the row.
+    self.etaTasking = ko.pureComputed(() => primaryEtaTasking(self.taskings()));
+    self.etaInfo = ko.pureComputed(() => {
+        const t = self.etaTasking();
+        return t ? t.etaInfo() : null;
+    });
+    self.etaTitle = ko.pureComputed(() => {
+        const t = self.etaTasking();
+        return t ? `${t.teamCallsign()}: ${t.etaInfo().title}` : '';
+    });
+
     self.sortedTaskings = ko.pureComputed(() =>
         self.taskings().slice().sort((a, b) =>
             new Date(a.currentStatusTime) - new Date(b.currentStatusTime)
@@ -545,12 +593,22 @@ export function Job(data = {}, deps = {}) {
     });
 
 
+    // Beacon allows incidents with no GPS fix; those get no map marker and
+    // can't be zoomed to.
+    self.hasLocation = ko.pureComputed(() =>
+        Number.isFinite(self.address.latitude()) && Number.isFinite(self.address.longitude()));
+
+    self.zoomToTitle = ko.pureComputed(() =>
+        self.hasLocation() ? 'Zoom to' : 'No GPS location for this incident');
+
     self.addressDisplayOrGPS = ko.pureComputed(() => {
 
         if (self.address.prettyAddress()) {
             return self.address.prettyAddress();
-        } else {
+        } else if (self.hasLocation()) {
             return `${self.address.latitude()}, ${self.address.longitude()}`;
+        } else {
+            return 'No location';
         }
     });
 
@@ -565,6 +623,9 @@ export function Job(data = {}, deps = {}) {
     });
 
     self.rowColour = ko.pureComputed(() => {
+        if (self.priorityName() === 'Rescue' && self.typeName() === 'FR' && self.categoriesName() === 'Category1') {
+            return 'row-rescue-fr1';
+        }
         switch (self.priorityName()) {
             case 'Rescue': return 'row-rescue';
             case 'Priority': return 'row-priority';
@@ -636,9 +697,11 @@ export function Job(data = {}, deps = {}) {
 
     Job.prototype.updateFromJson = function (d = {}) {
         this.lastDataUpdate(new Date());
+        d = splitLeanContactFields(d, this);
 
         // sector might be undefined or null. they mean different things
         if (d.Sector !== undefined) { //sector present in payload
+            if (!this.sectorKnown()) this.sectorKnown(true);
             if (d.Sector === null) { //theres no sector assigned
                 if (JSON.stringify(this.sector()) !== JSON.stringify(new Sector({}))) {
                     this.sector(new Sector({}));
@@ -673,8 +736,23 @@ export function Job(data = {}, deps = {}) {
         if (d.ICEMSIncidentIdentifier !== undefined) setIfChanged(this.icemsIncidentIdentifier, d.ICEMSIncidentIdentifier || null);
 
         // structured
-        if (d.JobPriorityType !== undefined) setIfChanged(this.jobPriorityType, d.JobPriorityType || null);
-        if (d.JobStatusType !== undefined) setIfChanged(this.jobStatusType, d.JobStatusType || null);
+        if (d.JobPriorityType !== undefined) {
+            setIfChanged(this.jobPriorityType, d.JobPriorityType || null);
+        } else if (d.JobPriorityTypeId !== undefined) {
+            // Some pushes (e.g. jobUpdated) send only the id, not the full
+            // {Id,Name,Description} object -- resolve it from the static
+            // enum instead of leaving jobPriorityType()/priorityName() stale.
+            const resolved = _resolveEnumById(Enum.JobPriorityType, d.JobPriorityTypeId);
+            if (resolved) setIfChanged(this.jobPriorityType, resolved);
+        }
+
+        if (d.JobStatusType !== undefined) {
+            setIfChanged(this.jobStatusType, d.JobStatusType || null);
+        } else if (d.JobStatusTypeId !== undefined) {
+            const resolved = _resolveEnumById(Enum.JobStatusType, d.JobStatusTypeId);
+            if (resolved) setIfChanged(this.jobStatusType, resolved);
+        }
+
         if (d.JobType !== undefined) setIfChanged(this.jobType, d.JobType || null);
 
         if (d.EntityAssignedTo !== undefined) {
@@ -685,8 +763,17 @@ export function Job(data = {}, deps = {}) {
             setIfChanged(this.entityAssignedTo.latitude, ea?.Latitude ?? null);
             setIfChanged(this.entityAssignedTo.longitude, ea?.Longitude ?? null);
 
-            // Correct handling of ParentEntity
-            if (ea.ParentEntity !== null) {
+            // Correct handling of ParentEntity -- distinguish "absent from
+            // this (possibly partial) payload" from "explicitly null" (REST
+            // responses always include the key; a push-derived Entity like
+            // {Id, Code, Name} may simply not carry it at all).
+            if (ea.ParentEntity === undefined) {
+                // not part of this payload -- leave existing state as-is
+            } else if (ea.ParentEntity === null) {
+                if (this.entityAssignedTo.parentEntity() !== null) {
+                    this.entityAssignedTo.parentEntity(null);
+                }
+            } else {
                 const existingParent = this.entityAssignedTo.parentEntity();
                 if (existingParent) {
                     setIfChanged(existingParent.id, ea.ParentEntity.Id ?? null);
@@ -694,10 +781,6 @@ export function Job(data = {}, deps = {}) {
                     setIfChanged(existingParent.name, ea.ParentEntity.Name ?? "");
                 } else {
                     this.entityAssignedTo.parentEntity(new Entity(ea.ParentEntity));
-                }
-            } else {
-                if (this.entityAssignedTo.parentEntity() !== null) {
-                    this.entityAssignedTo.parentEntity(null);
                 }
             }
         }
@@ -721,6 +804,7 @@ export function Job(data = {}, deps = {}) {
             }
         }
         if (Array.isArray(d.ActionRequiredTags)) {
+            this.lastActionTagsUpdate = Date.now();
             const newActionTags = d.ActionRequiredTags
                 .filter(t => t.TagGroupId === 27)
                 .map(t => new Tag(t));
@@ -764,9 +848,12 @@ export function Job(data = {}, deps = {}) {
     }
 
     // ---- map focus (delegated) ----
-    self.focusMap = function () {
+    // Bound to the zoom-to buttons, so KO passes the click event; the
+    // second click of a double-click (event.detail 2) zooms in to street
+    // level. Programmatic calls pass no event and always do the normal focus.
+    self.focusMap = function (_data, event) {
         if (self.isFilteredIn() === false) return;
-        flyToJob(self);
+        flyToJob(self, { street: event?.detail >= 2 });
     };
 
     self.toggleAndExpand = function () {
@@ -776,10 +863,14 @@ export function Job(data = {}, deps = {}) {
     }
 
     self.focusAndExpandInList = function () {
-        self.focusMap();
-        // expand the job row
+        // expand the job row first so a map failure can't swallow the click
         self.expand();
         scrollToThisInTable();
+        try {
+            self.focusMap();
+        } catch (err) {
+            console.error("Failed to focus job on map", self.id(), err);
+        }
     };
 
 
@@ -847,10 +938,22 @@ export function Job(data = {}, deps = {}) {
         self.collapse();
     };
 
-    self.refreshDataAndTasking = function () {
-        self.fetchTasking();
-        self.refreshData();
-        self.refreshIcemsIncident();
+    self.refreshDataAndTasking = function (opts = {}) {
+        self.fetchTasking(opts);
+        self.refreshData(opts);
+        self.refreshIcemsIncident(opts);
+    }
+
+    // Manual "refresh this incident" trigger (see the refresh button next to
+    // "Refreshed X ago" in tasking.html) -- forced, since a deliberate click
+    // should never silently no-op because of a cooldown meant to dedupe
+    // background timer/push refreshes. Covers every piece of a job's data,
+    // including unaccepted notifications, which refreshDataAndTasking
+    // doesn't (that one's also used by paths that shouldn't imply "and
+    // check ICEMS notifications too").
+    self.refreshAllData = function () {
+        self.refreshDataAndTasking({ force: true });
+        self.refreshUnacceptedNotifications();
     }
 
     self.fetchTasking = function (opts = {}) {
@@ -858,7 +961,7 @@ export function Job(data = {}, deps = {}) {
         if (!force) {
             const now = Date.now();
             const last = self.lastTaskingDataUpdate?.getTime?.() ?? 0;
-            if (now - last < SINGLE_FETCH_COOLDOWN_MS) {
+            if (now - last < getSingleFetchCooldownMs()) {
                 console.log("Skipping tasking fetch for job", self.id(), "due to cooldown");
                 return; // recently refreshed (single or batch), skip
             }
@@ -869,7 +972,13 @@ export function Job(data = {}, deps = {}) {
         });
     };
 
-    self.refreshData = async function () {
+    self.refreshData = async function (opts = {}) {
+        const force = opts.force === true;
+        if (!force && Date.now() - _lastRefreshDataFetch < getSingleFetchCooldownMs()) {
+            console.log("Skipping job data fetch for job", self.id(), "due to cooldown");
+            return;
+        }
+        _lastRefreshDataFetch = Date.now();
         self.dataLoading(true);
         fetchUnresolvedActionsLog(self);
         fetchJobById(self.id(), () => {
@@ -882,33 +991,6 @@ export function Job(data = {}, deps = {}) {
         });
     };
 
-
-    // interval that only runs while job is filtered in
-    function makeFilteredInterval(fn, intervalMs, { runImmediately = false } = {}) {
-        let handle = null;
-
-        const tick = () => {
-            // global guard: only run if still filtered in
-            if (!self.isFilteredIn()) return;
-            fn();
-        };
-
-        const start = () => {
-            if (!self.isFilteredIn()) return; // don't start if already filtered out
-            if (handle) clearInterval(handle);
-            if (runImmediately) tick();
-            handle = setInterval(tick, intervalMs);
-        };
-
-        const stop = () => {
-            if (handle) {
-                clearInterval(handle);
-                handle = null;
-            }
-        };
-
-        return { start, stop };
-    }
 
 }
 

@@ -1,0 +1,232 @@
+---
+title: Configuration
+nav_order: 11
+---
+
+# Configuration
+
+When you first launch LAD you are taken to the **Configuration** screen, where you configure the settings and filters LAD uses (see [First-Time Setup](getting-started.md#first-time-setup)). You can re-open it at any time with the **Page Configuration** button in either register (see [Register Controls](interface.md#register-controls)).
+
+This page is a reference for every setting, tab by tab. Each section links to the part of the guide that explains the feature it controls.
+
+The settings are split into tabs down the left: **Data**, **Filters**, **Map markers**, **Map layers**, **Collaborative layers**, **Layout**, **Starred**, **Appearance** and **Instant Task Suggestions**. At the bottom of the tabs, **Trackable Asset Library** saves your settings and opens the [Trackable Assets Library](assets.md#trackable-assets-library), and **User guide** opens this guide in a new tab.
+
+![LAD Configuration screen, Data tab](images/config-data.png)
+
+## Data Settings
+
+The Configuration screen opens on the **Data** tab. It sets the primary filters that govern what data is synced into LAD.
+
+### Headquarter Filters
+
+Filter your teams and incidents to specific headquarters. If no headquarters are selected, data from **all** headquarters is synced.
+
+You can have different HQ filters for incidents and teams, but it is **recommended** to keep them identical for normal operations.
+
+![Headquarters filters for teams and incidents](images/hq-filter.png)
+
+#### Adding Headquarters
+
+Type the headquarters name into the search field. Click anywhere on the headquarters name to add it to **both** the Teams and Incidents filters, or click the **Teams** or **Incidents** button at the right of the row to add it to only that filter.
+
+![Headquarters search with Teams and Incidents buttons](images/hq-filter-search.png)
+
+#### Expanding Headquarters
+
+If you select a zone, you can expand it to include all units under the zone. This works the same way as the zone expand feature in the Beacon headquarters filter.
+
+![Zone expand button](images/hq-expand-zone.png)
+
+#### Clearing Headquarters
+
+To remove a headquarters from a filter, click the cross next to it. To remove all headquarters, click the **Clear** button above the list of selected headquarters.
+
+![Clear button](images/hq-clear.png)
+
+### Full Refresh Interval
+
+How often a full reload of data from Beacon occurs. The default is **3 minutes**. With Live Updates on, you shouldn't need to sync more often than that.
+
+### History
+
+How far back to load data. The default is **1 week** — incidents and teams older than one week are not synced into LAD.
+
+### Lookahead
+
+Whether incidents or teams created in the future are synced into LAD. The default is **None**.
+
+### Live Updates
+
+When information is updated in Beacon, it is pushed directly into LAD, giving near real-time updates to incidents, teams and tasking statuses. Each register's **Refresh Data** button flashes when an update for it arrives (see [Register Controls](interface.md#register-controls)).
+
+> **Note:** When using Live Updates, keep the Full Refresh Interval between 3 and 5 minutes. The full refresh picks up anything Live Updates missed.
+
+## Filter Settings
+
+The **Filters** tab gives more granular control over which incidents and teams are synced into LAD.
+
+### Incidents
+
+Choose which incident statuses and types are synced. Only incidents whose status **AND** type are both selected are synced.
+
+![Incident status and type filters](images/config-incident-filters.png)
+
+### Teams
+
+Choose which team statuses, team types and tasking statuses are synced. Only teams whose status **AND** type are both selected are synced.
+
+Taskings are only displayed under teams when they match the selected tasking statuses.
+
+![Team status, type and tasking status filters](images/config-team-filters.png)
+
+### Sectors
+
+Control which incidents and teams appear based on their sector.
+
+![Sector filters](images/config-sectors.png)
+
+- **Apply sector filters to**: tick **Incidents** and/or **Teams** to choose what the sector filter applies to.
+
+  ![Apply sector filters to Incidents and Teams](images/config-sectors-apply.png)
+
+- **Include items without a sector**: on by default. Incidents and teams with no sector assigned are always synced.
+
+  ![Include items without a sector override](images/config-sectors-override.png)
+
+- **Filter by Sectors**: select the sectors to sync. Only sectors for the headquarters selected in [Data Settings](#headquarter-filters) are available.
+
+## Map Markers
+
+The **Map markers** tab controls how incident and asset markers are displayed. Its settings are grouped into two sections, **Incident markers** and **Asset markers**. The order and transparency of map layers are on the [Map layers](#map-layers) tab. Click a section to open it; opening one closes the others.
+
+![Map marker settings](images/config-map-markers.png)
+
+### Incident Markers
+
+#### Incident Marker Clustering
+
+When enabled, markers that are close together on the map are grouped into a cluster to reduce clutter.
+
+- **Cluster radius**: how close markers must be (in pixels) to cluster. The default is **60px**. Lower values keep markers separate; higher values cluster more.
+- **Include Rescue incidents in clustering**: whether rescue incidents can be clustered with other markers.
+
+See [Incident Clustering](situation-map.md#incident-clustering).
+
+#### Incident Status on Markers
+
+When enabled, LAD adds extra indicators to incident markers so you can see incident status, and any unresolved action required tag, at a glance. See [Incident Status on Markers](situation-map.md#incident-status-on-markers).
+
+### Asset Markers
+
+![Asset marker settings](images/config-asset-markers.png)
+
+#### Overlapping Markers
+
+- **Spread out overlapping asset markers** (on by default). When zoomed in, asset markers that would overlap swing around the vehicle's position so each one can be seen and clicked. Zoomed further out, markers overlap as they always have. See [Overlapping Asset Markers](assets.md#overlapping-asset-markers).
+- **Start spreading out from** sets the zoom level markers start spreading out at. The default is **zoom 15 (streets)**. Slide towards **Further out** (down to zoom 13, suburbs) if you work in a busy area and want markers separated sooner, or towards **Closer in** (up to zoom 18) if vehicles in your area are usually well apart.
+- **Allow markers to move out on lines** (on by default). Where there isn't room for a marker to swing around its position, it moves out on a line back to a dot where the vehicle is. Turn this off to keep every marker on its position; crowded spots then overlap.
+
+These options only show while **Spread out overlapping asset markers** is on.
+
+#### Recent Travel
+
+- **Show a breadcrumb trail for the selected asset** (on by default). While a vehicle's popup is open, a fading line through its recent positions shows where it has come from. See [Asset Breadcrumb Trails](assets.md#asset-breadcrumb-trails). Trails are kept only in this browser. Turning this off clears them.
+- **Trail length** sets how far back the trail goes, from **15 minutes** to **2 hours**. The default is **30 minutes**. Vehicles report their position every few minutes, so a longer trail shows more of the route.
+
+#### Capability Codes
+
+- **Show capability codes on asset markers** (on by default). A tab on top of each asset marker shows the asset's capability as a short code, so capabilities with similar colours can be told apart, such as the rescue tiers and Community First Responder. The map legend lists each code next to its capability. See [Capability Codes](assets.md#capability-codes) for the full list.
+
+#### Arrival Alert
+
+- **Alert when a team has arrived but isn't marked Onsite** (on by default). The [Arrived, not marked Onsite](interface.md#alerts) alert lists *Tasked* or *Enroute* teams whose asset has reported a location in the last 15 minutes close to their incident.
+- **Distance from the incident marker** sets how close the asset must be, from **50 m** to **1 km**. The default is **200 m**. Make it larger for big properties or rural incidents where assets stop well away from the marker.
+
+## Map Layers
+
+The **Map layers** tab sets the order map layers are drawn in and how see-through each one is.
+
+![Layer order and transparency settings](images/config-layer-order.png)
+
+It lists every map layer: incident markers, asset markers, routes and measuring, and each overlay from the **Layers** menu, including your collaborative layers. Layers at the top of the list are drawn over layers lower down. To find a layer quickly, type in the search box (for example `radar` or `bom warn`; it matches layer names and their **Layers** menu group), or turn on **On map only** to list just the layers showing now. **Show all** clears both. To get here straight from the map, click <img class="icon" src="images/icon-layer-order.png" alt="Layer order and transparency" height="20"> next to the search bar in the **Layers** menu. For each layer you can:
+
+- **Turn it on or off** with the switch. This is the same as its toggle in the **Layers** menu. Layers on the map are marked **On map**; the rest are marked **Off** and greyed out. Incident and asset markers, and routes and measuring, are always listed as on; hide incidents and assets from the **Layers** menu as before.
+- **Move it** by dragging the grip on the left, or with the up and down arrows (easier in a long list).
+- **Make it see-through** with the slider, from 100% (solid) down to 10%. Layers start at 100%, except **BOM Rain Radar Still** and **BOM Severe Thunderstorm Cells**, which start at 50%, and **RainViewer Animated Rainfall Radar**, **BOM Severe Thunderstorm Warning** and **BOM Sea Surface Temperature (°C)**, which start at 60%, so roads and boundaries show through them.
+
+Order and transparency are remembered for layers that are off, and apply when you turn them on. **Reset** puts every layer back in its default position and transparency. By default, from top to bottom:
+
+1. Incident markers
+2. Collaborative layers
+3. Asset markers
+4. Routes, measuring & HQ coverage
+5. Other overlays (boundaries, warnings, Transport NSW, HazardWatch and so on)
+6. Weather imagery (radar, satellite and BOM forecast and observation maps), with **BOM Thunderstorm Tracking** above **BOM Rain Radar Still** so storm cells show over the rain
+
+Moving a filled overlay above incidents or assets can stop you clicking the markers under it. Lower its transparency or move it back down if that happens.
+
+## Collaborative Layers
+
+The **Collaborative layers** tab is where you subscribe to existing collaborative map layers and create new ones. Layers you're subscribed to can be shown from the map's **Layers** menu. See [Collaborative Map Layers](situation-map.md#collaborative-map-layers) for subscribing, creating layers and adding markers.
+
+![Collaborative Layers settings](images/config-collab-layers.png)
+
+## Layout
+
+Pick a layout by its picture, and use **Map on the left** to move the map to the other side. The page changes as you pick.
+
+**Tabs** shows one list at a time at full height, which suits tablets such as an iPad, and is the default there. Switch between the lists with the **Teams** and **Incidents** tabs at the top of the side drawer; LAD remembers which one was showing. When the window is taller than it is wide (an iPad in portrait), the side drawer runs across the full width with the map below it (map on the right) or above it (map on the left); drag the divider between them to share the height.
+
+![Layout settings](images/config-layout.png)
+
+## Starred Teams & Incidents
+
+View all [starred](interface.md#starring-incidents-and-teams) teams and incidents. Use the **Clear** buttons to clear starred teams or incidents, or **Clear all Starred** to clear both.
+
+![Starred teams and incidents](images/config-starred.png)
+
+## Appearance
+
+![Appearance settings](images/config-appearance.png)
+
+- **Theme**: Light, Dark, or Auto (follows your browser setting).
+- **Auto-collapse alert popups**: when enabled, all [alerts](interface.md#alerts) start collapsed when the page loads.
+- **Count active taskings only**: when enabled, *Complete*, *CalledOff* and *Untasked* statuses don't count towards a tasking count.
+- **Spotlight hotkey**: the key combination that opens the [Spotlight menu](spotlight.md). Click the field and press the new combination, or click **Reset**.
+
+## Instant Task Suggestions
+
+When enabled, LAD suggests a team when you [task an incident](tasking.md#instant-task). Suggestions are based on each team's distance and tasking count, and **do not take team capabilities into account**. See [Instant Task Suggestions](tasking.md#instant-task-suggestions) for how the suggested team is picked.
+
+![Instant Task Suggestions settings](images/config-instant-task.png)
+
+### Use Road Travel Times
+
+When enabled, distance comes from an estimated driving time instead of straight-line (as the crow flies) distance. The list shows straight-line distances straight away, then updates when travel times arrive.
+
+### Weights
+
+Set separate weights for **Rescue** and **Standard** (non-rescue) incidents, balancing the importance of distance against tasking count.
+
+## Sharing Configurations
+
+**Share** generates a code that captures your current filters and settings. Another user can click **Load**, enter the code and click **Go** to apply the same configuration.
+
+![Share and Load buttons](images/config-share-load.png)
+
+## Restoring Default Settings
+
+**Restore Defaults** lets you pick what to put back to its defaults, then reloads LAD. Click it to open the **Restore Defaults** window, untick anything you want to keep, and click **Reset and reload**. **Cancel** takes you back to the Configuration screen with nothing changed.
+
+| Option | What it resets | Ticked to start |
+| --- | --- | --- |
+| **Configuration settings** | Everything on this screen: filters, refresh, map markers, layer order and transparency. Removes starred incidents and teams. | Yes |
+| **Layout** | The page layout and pane sizes, the collapsed side drawer and Legend, the radar bar, the in-view filters on the registers and capability icons. | Yes |
+| **Map layers** | Which overlays are on, the basemap, whether incidents are shown, and the Layers menu. | Yes |
+| **Layer presets** | Your [layer presets](situation-map.md#layer-presets), back to Weather, Roads and Boundaries. | No |
+| **Collaborative layer subscriptions** | Which [collaborative layers](situation-map.md#collaborative-map-layers) you've subscribed to. | No |
+| **Asset trails** | Recorded [asset trails](assets.md#asset-breadcrumb-trails). | No |
+
+Downloaded data that LAD fetches again by itself (cached asset positions and collaborative layers) is always cleared. Settings for other Lighthouse pages, such as the Radio Console, Incident Statistics, Incident Summary and the export pages, are never touched.
+
+![Restore Defaults options](images/config-restore-defaults.png)

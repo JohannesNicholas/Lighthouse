@@ -36,7 +36,6 @@ export function registerWaterNSWBoundariesLayer(vm) {
         where: "1=1",
         fields: ["OBJECTID", "Class", "NAME"],
         style: (feature) => {
-            console.log(feature)
           const cls = feature.properties.Class;
           const colours = styleByClass(cls);
           return {
@@ -53,7 +52,7 @@ export function registerWaterNSWBoundariesLayer(vm) {
       featureLayer.bindPopup((layer) => {
         const p = layer.feature.properties;
         return `<strong>${p.NAME || "Unknown"}</strong><br>${p.Class || ""}`;
-      });
+      }, { pane: "pane-popup-top" });
 
       layerGroup.addLayer(featureLayer);
     },
@@ -101,7 +100,7 @@ export function registerEPAContaminationSitesLayer(vm) {
             ? `<br><strong>Management:</strong> ${p.ManagementClass}`
             : "",
         ].join("");
-      });
+      }, { pane: "pane-popup-top" });
 
       layerGroup.addLayer(featureLayer);
     },

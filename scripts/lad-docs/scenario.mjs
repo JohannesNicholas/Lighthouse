@@ -1,0 +1,667 @@
+/*
+  Deterministic demo scenario for the LAD (tasking) page.
+
+  Structure mirrors real Beacon payloads (captured with fetch-samples.mjs,
+  October 2026); every *value* here is invented -- unit, people, callsigns,
+  ids, phone numbers, plates and street names are all fake. Coordinates sit
+  in western Sydney purely so the basemap looks plausible.
+
+  Beacon timestamps carry no offset ("YYYY-MM-DDTHH:mm:ss", NSW local time),
+  so the harness pins the browser to Australia/Sydney and this module emits
+  local Sydney time. All times are relative to `now` so the page's
+  date-window filters always admit them.
+*/
+
+import { photoList } from './photos.mjs';
+
+const TZ = 'Australia/Sydney';
+
+/** Beacon-style offset-free local timestamp, `hoursAgo` before `now`. */
+function beaconTime(now, hoursAgo = 0) {
+  const d = new Date(now.getTime() - hoursAgo * 3600 * 1000);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-AU', {
+      timeZone: TZ, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
+}
+
+export const HQ = {
+  Id: 9001,
+  Code: 'DEM',
+  Name: 'Demo City',
+  Latitude: -33.8150,
+  Longitude: 151.0010,
+  EntityTypeId: 1,
+  HeadquartersStatusTypeId: 1,
+  ParentEntity: { Id: 9000, Code: 'DMZ', Name: 'Demo Zone' },
+  AriaCodeType: { Id: 1, Name: 'Not Applicable', Description: null },
+  AriaCode: null,
+  CadCode: 'SES999',
+};
+
+const TEAM_STATUS = {
+  Standby: { Id: 1, Name: 'Standby', Description: null },
+  OnAlert: { Id: 2, Name: 'OnAlert', Description: null },
+  Activated: { Id: 3, Name: 'Activated', Description: null },
+};
+const TEAM_TYPE_FIELD = { Id: 1, Name: 'Field', Description: null };
+
+const JOB_STATUS = {
+  New: { Id: 1, Name: 'New', Description: 'New' },
+  Active: { Id: 2, Name: 'Active', Description: 'Active' },
+  Tasked: { Id: 4, Name: 'Tasked', Description: 'Tasked' },
+  Referred: { Id: 5, Name: 'Referred', Description: 'Referred' },
+};
+const PRIORITY = {
+  Rescue: { Id: 1, Name: 'Rescue', Description: 'Rescue' },
+  Immediate: { Id: 2, Name: 'Immediate', Description: 'Immediate Response' },
+  Priority: { Id: 3, Name: 'Priority', Description: 'Priority Response' },
+  General: { Id: 4, Name: 'General', Description: 'General Response' },
+};
+const JOB_TYPE = {
+  Storm: { ParentId: 1, ROGSCategory: 'Storm & Cyclones', Id: 1, Name: 'Storm', Description: 'Storm' },
+  Support: { ParentId: 2, ROGSCategory: 'Other', Id: 2, Name: 'Support', Description: 'Support' },
+  FR: { ParentId: 5, ROGSCategory: 'Flood', Id: 4, Name: 'FR', Description: 'Flood Rescue' },
+};
+// JobTeamStatusType ids (utils/enum.js)
+const TASKING_STEPS = [
+  [1, 'Tasked'], [3, 'Enroute'], [4, 'Onsite'], [5, 'Offsite'],
+];
+
+// Storm-damage tags (tag group 5 shape: {Id, Name, TagGroupId, Description}).
+const TAGS = {
+  BranchDown: { Id: 9134, Name: 'Branch Down', TagGroupId: 5, Description: null },
+  TreeOnHouse: { Id: 9135, Name: 'Tree on House', TagGroupId: 5, Description: null },
+  RoofLeak: { Id: 9136, Name: 'Roof Leak', TagGroupId: 6, Description: null },
+};
+
+// Ops-log tag groups, as the Ops/Radio Log modal lists them: 2 Contact Types,
+// 3 Contact Methods, 4 Entry Purpose, 27 Action Items (the action-required
+// ones). Names follow Beacon's vocabulary; ids are fake, except the ones
+// tagFactory.js keys an icon off (TagIconsOverride) -- those keep that id so
+// the pills render with the same icon as in Beacon, and Radio (6) is what the
+// radio log auto-selects.
+const ICON_TAG_IDS = {
+  Ambulance: 11, FRNSW: 13, Police: 10, SES: 15,
+  ICEMS: 420, 'Phone Call': 2, Radio: 6,
+  Incoming: 256, Outgoing: 257,
+};
+const opsTagGroup = (groupId, firstId, names) =>
+  names.map((Name, i) => ({ Id: ICON_TAG_IDS[Name] ?? firstId + i, Name, TagGroupId: groupId, Description: null }));
+
+const OPS_TAG_GROUPS = {
+  2: opsTagGroup(2, 9300, [
+    'Ambulance', 'Arborist', 'BOM', 'Contractor', 'Council', 'Crane/EWP', 'Electricity', 'FRNSW',
+    'Gas', 'HAZMAT', 'Incident Contact', 'NPWS', 'Other', 'Police', 'Recon', 'Resident',
+    'RFS', 'RMS', 'SES', 'Telco', 'TMC', 'Water',
+  ]),
+  3: opsTagGroup(3, 9230, ['Email', 'Face-to-Face', 'Fax', 'ICEMS', 'Phone Call', 'Printed', 'Radio', 'SMS']),
+  4: opsTagGroup(4, 9400, [
+    'All Capabilities', 'Backdated', 'CFR', 'Flood/Storm', 'FR In Water', 'FR On Water', 'GLR',
+    'Incoming', 'Information', 'Outgoing', 'RCR', 'Support', 'Unavailability', 'Update', 'VR',
+  ]),
+  27: opsTagGroup(27, 9270, [
+    'Awaiting Update', 'Call Made', 'Call Needed', 'Further Action Required', 'Handover', 'Media',
+    'Not SES Incident', 'Ready To Task', 'Referral Required', 'Reopened', 'Retrieve Equipment',
+    'Teams Complete', 'Untasked', 'Welfare Check',
+  ]),
+};
+const opsTag = (groupId, name) => OPS_TAG_GROUPS[groupId].find((t) => t.Name === name);
+
+// The ops-log tags the fixture entries below use.
+const OPS_TAGS = {
+  FurtherAction: opsTag(27, 'Further Action Required'),
+  CallMade: opsTag(27, 'Call Made'),
+  PhoneCall: opsTag(3, 'Phone Call'),
+};
+
+// Ops log entries: [jobIndex, subject, text, tagKeys, hoursAgo, actionRequired]
+// Job 1 has the same action tag twice (shows as "x2"); job 6 is tasked, so
+// its action shows in the team's tasking list too.
+const OPS_LOG_SPECS = [
+  [1, 'Caller update', 'Caller advises water now reaching second bedroom.', ['PhoneCall', 'FurtherAction'], 0.5, true],
+  [1, 'Neighbour report', 'Neighbour reports tiles still lifting in the wind.', ['FurtherAction'], 0.35, true],
+  [6, 'Callback', 'Owner asked for a callback once a team is en route.', ['PhoneCall', 'CallMade'], 1.6, true],
+  [3, 'Welfare', 'Occupants relocated to front room, no injuries.', ['PhoneCall'], 1.2, false],
+];
+
+// Per-job extras, keyed by job index. Job 6 (2610-1207) shows every
+// indicator under its ID: photos, an outstanding action and the ICEMS icon.
+// The ICEMS id is a placeholder (no real ICEMS sample captured yet); it only
+// surfaces as the icon's tooltip.
+const PHOTO_COUNTS = { 6: 3 };
+const ICEMS_IDS = { 6: 'DEMO-ICEMS-0042' };
+
+// ICEMS incident detail (Icems/incidents/{id}). NOTE: no real sample could be
+// captured (trainbeacon has no ICEMS), so this holds only the fields our code
+// reads -- AgenciesInvolved[].Name/AgencyStatusId/ResourceStatusId (see
+// Job.icemsAgencies) -- not Beacon's full structure. Status ids come from
+// utils/enum.js (IncidentAgenciesInvolvedStatus / ResourceStatus).
+const ICEMS_INCIDENTS = {
+  'DEMO-ICEMS-0042': {
+    AgenciesInvolved: [
+      { Name: 'NSWPF', AgencyStatusId: 3, ResourceStatusId: 4 },  // Responded, On Scene
+      { Name: 'ASNSW', AgencyStatusId: 3, ResourceStatusId: 1 },  // Responded, En Route
+      { Name: 'FRNSW', AgencyStatusId: 1, ResourceStatusId: null }, // Requested
+    ],
+  },
+};
+
+const PEOPLE = [
+  ['Alex', 'Nguyen'], ['Sam', 'Patel'], ['Jordan', 'Smith'], ['Casey', 'Brown'], ['Riley', 'Wilson'],
+  ['Morgan', 'Taylor'], ['Jamie', 'Lee'], ['Taylor', 'Martin'], ['Drew', 'White'], ['Quinn', 'Harris'],
+  ['Avery', 'Clark'], ['Parker', 'Lewis'], ['Harper', 'Walker'], ['Skyler', 'Hall'], ['Reese', 'Young'],
+  ['Hayden', 'King'], ['Emerson', 'Wright'], ['Finley', 'Scott'],
+];
+
+// Fictional streets/localities at plausible western-Sydney coordinates.
+// [streetNumber, street, locality, postcode, lat, lng]
+const ADDRESSES = [
+  ['12', 'Wattle Cres', 'DEMO CITY', '2999', -33.8136, 151.0034],
+  ['48', 'Banksia Rd', 'DEMO RIVER', '2998', -33.8131, 151.0303],
+  ['7', 'Lilly Pilly Pl', 'DEMO HEIGHTS', '2997', -33.7963, 151.0244],
+  ['103', 'Ironbark Ave', 'NORTH DEMO CITY', '2996', -33.7953, 151.0105],
+  ['22', 'Grevillea St', 'NORTH DEMO CITY', '2996', -33.8030, 151.0016],
+  ['5', 'Waratah Lane', 'DEMO PARK', '2999', -33.8197, 151.0083],
+  ['66', 'Kurrajong Rd', 'DEMOVILLE', '2995', -33.8318, 151.0089],
+  ['14', 'Tea Tree Cl', 'DEMO RIVER', '2998', -33.8165, 151.0226],
+  ['31', 'Bottlebrush Dr', 'DEMO HILLS', '2994', -33.8018, 151.0381],
+  ['9', 'Blackbutt St', 'DEMO WEST', '2993', -33.8366, 150.9926],
+  ['77', 'Coolabah Way', 'DEMO NORTH', '2992', -33.7845, 150.9933],
+  ['2', 'Mallee Ct', 'DEMO FLATS', '2991', -33.8197, 151.0242],
+  ['150', 'Paperbark Pde', 'DEMO CITY', '2999', -33.8099, 150.9989],
+  ['40', 'Saltbush Rd', 'DEMO WEST', '2993', -33.8051, 150.9719],
+];
+
+// [statusKey, priorityKey, typeKey, situation, hoursAgo, tags]
+const JOB_SPECS = [
+  ['New', 'Immediate', 'Storm', 'Tree fallen across roof, residents inside', 0.3, ['TreeOnHouse']],
+  ['New', 'Priority', 'Storm', 'Leaking roof, water entering bedroom', 0.6, ['RoofLeak']],
+  ['New', 'General', 'Storm', 'Branch down in front yard, blocking driveway', 1.1, ['BranchDown']],
+  ['Active', 'Priority', 'Storm', 'Ceiling sagging under water load', 1.5, ['RoofLeak']],
+  ['Active', 'General', 'Storm', 'Fence down, dog contained', 2.2, []],
+  ['Tasked', 'Immediate', 'Storm', 'Tree on car, no persons trapped', 0.9, ['BranchDown']],
+  ['Tasked', 'Priority', 'Storm', 'Multiple tiles dislodged, rain forecast', 1.8, ['RoofLeak']],
+  ['Tasked', 'Priority', 'Storm', 'Gutter collapsed, water into wall cavity', 2.6, []],
+  ['Tasked', 'General', 'Storm', 'Tarp blown off previous repair', 3.4, ['RoofLeak']],
+  ['Tasked', 'Rescue', 'FR', 'Vehicle in floodwater, occupant on roof', 0.4, []],
+  ['Active', 'General', 'Support', 'Sandbag request for low-lying property', 4.1, []],
+  ['Referred', 'General', 'Storm', 'Power line down across footpath', 2.9, []],
+  ['New', 'General', 'Storm', 'Large tree limb overhanging neighbour', 0.2, ['BranchDown']],
+  ['Active', 'Immediate', 'Storm', 'Window smashed by debris, elderly occupant', 0.7, []],
+];
+
+// [callsign, statusKey, memberCount, taskedJobIndexes, radioAssetName, assetOffset]
+// Assets match teams by callsign (utils/assetTeamMatching.js). DEM03's radio
+// is deliberately named differently so the "unmatched team" and "unmatched
+// asset" states both appear. DEM06 is Standby, so it's hidden by the default
+// team status filter (Activated only).
+const TEAM_SPECS = [
+  ['DEM01', 'Activated', 3, [5, 6], 'DEM01', [0.004, -0.003]],
+  ['DEM02', 'Activated', 4, [7], 'DEM02', [-0.006, 0.004]],
+  ['DEM03', 'Activated', 2, [8], 'DEM21', [0.002, 0.008]],
+  ['DEM04', 'Activated', 3, [9], 'DEM04', [-0.003, -0.006]],
+  ['DEM05', 'Activated', 3, [], null, null],
+  ['DEM06', 'Standby', 2, [], null, null],
+];
+
+// Satellite tracker fields on a ResourceLocations/Radio feature. All null for
+// a radio without a tracker; ids are invented.
+function satellite({ n, lat, lng, seen, cls, status, battery } = {}) {
+  if (!n) {
+    return {
+      satelliteId: null, satelliteBattery: null, satelliteLatitude: null, satelliteLongitude: null,
+      satelliteClass: null, satelliteEquipmentId: null, satelliteLocationLastUpdated: null,
+      satelliteClassType: null, satelliteStatus: null,
+    };
+  }
+  return {
+    satelliteId: `0-99001${String(n).padStart(2, '0')}`,
+    satelliteBattery: battery,
+    satelliteLatitude: lat,
+    satelliteLongitude: lng,
+    satelliteClass: cls,
+    satelliteEquipmentId: String(99100000 + n),
+    satelliteLocationLastUpdated: seen,
+    satelliteClassType: cls,
+    satelliteStatus: status,
+  };
+}
+
+// Person shape as seen on CreatedBy/LastModifiedBy.
+function person(i) {
+  const [first, last] = PEOPLE[i % PEOPLE.length];
+  return {
+    Id: 50001 + i,
+    FirstName: first,
+    LastName: last,
+    FullName: `${first} ${last}`,
+    Gender: i % 2,
+    RegistrationNumber: String(40000001 + i),
+  };
+}
+
+const OPERATOR = person(17);
+const fakePhone = (i) => `0491 570 ${String(100 + i).slice(-3)}`; // ACMA fictional-use range
+
+// Extra incidents for benchmarks (`jobCount` above JOB_SPECS.length): the
+// specs repeated, scattered up to ~15 km around the demo addresses by a fixed
+// pseudo-random sequence, so every run gets the same map.
+function benchJobSpecs(count) {
+  let seed = 12345;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  return Array.from({ length: Math.max(0, count - JOB_SPECS.length) }, (_, k) => ({
+    spec: JOB_SPECS[k % JOB_SPECS.length],
+    offset: [(rand() - 0.5) * 0.27, (rand() - 0.5) * 0.32],
+  }));
+}
+
+/**
+ * `jobCount` scales the incident list up for benchmarks (default: the 14
+ * hand-written ones). Teams, taskings and the ops log stay as they are.
+ */
+export function buildScenario(now = new Date(), { jobCount = JOB_SPECS.length } = {}) {
+  const t = (hoursAgo) => beaconTime(now, hoursAgo);
+
+  const specs = [
+    ...JOB_SPECS.map((spec) => ({ spec, offset: [0, 0] })),
+    ...benchJobSpecs(jobCount),
+  ];
+  const jobs = specs.map(({ spec: [status, prio, type, situation, hoursAgo, tagKeys], offset }, i) => {
+    const [num, street, locality, postcode, baseLat, baseLng] = ADDRESSES[i % ADDRESSES.length];
+    const lat = +(baseLat + offset[0]).toFixed(5);
+    const lng = +(baseLng + offset[1]).toFixed(5);
+    const caller = person(i + 5);
+    // Every other incident has a separate on-site contact, so the expanded
+    // view's "Called By" line shows; the rest have the caller as the contact.
+    const contact = i % 2 ? person(i + 10) : null;
+    const received = t(hoursAgo);
+    const history = [{ Type: 1, Name: 'New', Description: 'New', Timelogged: received, CreatedOn: received, CreatedBy: OPERATOR }];
+    if (status !== 'New') {
+      const at = t(Math.max(0.05, hoursAgo - 0.1));
+      history.push({ Type: JOB_STATUS[status].Id, Name: status, Description: status, Timelogged: at, CreatedOn: at, CreatedBy: OPERATOR });
+    }
+    return {
+      Id: 70000 + i,
+      Identifier: `2610-${String(1201 + i).padStart(4, '0')}`,
+      Sequence: 1201 + i,
+      FloodAssistanceJob: false,
+      ReferringAgency: null,
+      ReferringAgencyReference: null,
+      EmergencyOrder: null,
+      SituationOnScene: situation,
+      EvacuationRequired: false,
+      PeopleInundated: 0,
+      PeopleExtricated: 0,
+      PeopleEvacuated: 0,
+      CreatedOn: received,
+      CreatedBy: OPERATOR,
+      CallerFirstName: caller.FirstName,
+      CallerLastName: caller.LastName,
+      ICEMSIncidentIdentifier: ICEMS_IDS[i] ?? null,
+      ContactCalled: !contact,
+      CallerPhoneNumber: fakePhone(i),
+      ContactFirstName: contact?.FirstName ?? null,
+      ContactLastName: contact?.LastName ?? null,
+      ContactPhoneNumber: contact ? fakePhone(i + 50) : null,
+      EntityAssignedTo: { ...HQ },
+      LGA: 'Demo City Council',
+      Sector: null,
+      JobPriorityType: PRIORITY[prio],
+      TaskingCategory: 0,
+      JobType: JOB_TYPE[type],
+      JobStatusType: JOB_STATUS[status],
+      Tags: tagKeys.map((k) => ({ ...TAGS[k], CreatedOn: '2015-01-01T00:00:00', CreatedBy: 1 })),
+      Address: {
+        GnafId: `GADEMO${String(700000 + i)}`,
+        Latitude: lat,
+        Longitude: lng,
+        Type: null,
+        Flat: null,
+        Level: null,
+        StreetNumber: num,
+        Street: street,
+        Locality: locality,
+        PostCode: postcode,
+        PrettyAddress: `${num} ${street}, ${locality} NSW ${postcode}`,
+        AdditionalAddressInfo: null,
+      },
+      LastModified: history[history.length - 1].Timelogged,
+      LastModifiedBy: OPERATOR,
+      JobStatusTypeHistory: history,
+      PermissionToEnterPremises: true,
+      HowToEnterPremises: null,
+      Event: {
+        Id: 3001, Name: 'Demo Storm Event', Identifier: 'EVT-DEMO-01', Description: 'Severe storm, Demo Zone',
+        District: 'Demo Zone', StartTime: t(12), EndTime: null,
+      },
+      JobReceived: received,
+      Reconnoitered: false,
+      AgenciesPresent: [],
+      FloodAssistance: null,
+      Type: JOB_TYPE[type].Name,
+      PrintCount: 0,
+      Categories: [],
+      Frao: null,
+      Locked: false,
+    };
+  });
+
+  // Ops log entries (OperationsLog/search shape). j may be null (no incident).
+  const opsLogRow = (id, j, subject, text, tags, at, actionRequired) => ({
+    Id: id,
+    JobLabel: j ? j.Identifier : null,
+    JobId: j ? j.Id : null,
+    EventLabel: j ? j.Event.Identifier : null,
+    EventId: j ? j.Event.Id : null,
+    Entity: { ...HQ },
+    Important: false,
+    Position: null,
+    Subject: subject,
+    Text: text,
+    Restricted: false,
+    ActionRequired: actionRequired,
+    ActionReminder: null,
+    ReadOnly: false,
+    TalkgroupId: null,
+    TalkgroupLabel: null,
+    TalkgroupRequestId: null,
+    TalkgroupRequestLabel: null,
+    TimeLogged: at,
+    Tags: tags.map((tag) => ({ ...tag, CreatedOn: '2015-01-01T00:00:00', CreatedBy: 1 })),
+    CreatedOn: at,
+    CreatedBy: OPERATOR,
+    ICEMSIncidentIdentifier: null,
+  });
+  const opsLog = OPS_LOG_SPECS.map(([ji, subject, text, tagKeys, hoursAgo, actionRequired], i) =>
+    opsLogRow(41000 + i, jobs[ji], subject, text, tagKeys.map((k) => OPS_TAGS[k]), t(hoursAgo), actionRequired));
+  // What Beacon reports as a job's outstanding action tags: the group-27
+  // tags on its unresolved action-required entries.
+  const actionTagsByJob = new Map();
+  opsLog.filter((e) => e.ActionRequired).forEach((e) => {
+    const tags = e.Tags.filter((g) => g.TagGroupId === 27).map(({ Id, Name, TagGroupId, Description }) => ({ Id, Name, TagGroupId, Description }));
+    actionTagsByJob.set(e.JobId, [...(actionTagsByJob.get(e.JobId) || []), ...tags]);
+  });
+
+  // The slimmer job shape Beacon embeds inside a tasking.
+  const taskingJob = (j) => ({
+    Id: j.Id,
+    Identifier: j.Identifier,
+    ICEMSIncidentIdentifier: j.ICEMSIncidentIdentifier,
+    TypeId: j.JobType.Id,
+    Type: j.Type,
+    CallerName: `${j.CallerFirstName} ${j.CallerLastName}`,
+    CallerNumber: j.CallerPhoneNumber,
+    ContactName: j.ContactFirstName && `${j.ContactFirstName} ${j.ContactLastName}`,
+    ContactNumber: j.ContactPhoneNumber,
+    PermissionToEnterPremises: j.PermissionToEnterPremises,
+    HowToEnterPremises: null,
+    JobReceived: j.JobReceived,
+    JobPriorityType: j.JobPriorityType,
+    JobStatusType: j.JobStatusType,
+    JobType: j.JobType,
+    EntityAssignedTo: j.EntityAssignedTo,
+    LGA: j.LGA,
+    Address: j.Address,
+    Tags: j.Tags,
+    TaskingCategory: 0,
+    SituationOnScene: j.SituationOnScene,
+    EventId: j.Event.Id,
+    PrintCount: 0,
+    ActionRequiredTags: actionTagsByJob.get(j.Id) || [],
+    Categories: [],
+    InFrao: false,
+    ImageCount: PHOTO_COUNTS[j.Id - 70000] || 0,
+  });
+
+  let memberSeq = 0;
+  const teams = TEAM_SPECS.map(([callsign, status, memberCount, jobIdx], i) => ({
+    Id: 80000 + i,
+    Callsign: callsign,
+    VehicleType: null,
+    VehicleRegistration: null,
+    TeamStatusStartDate: t(3 + i * 0.5),
+    ReadyToReTask: t(-1),
+    CreatedAt: { ...HQ },
+    AssignedTo: { ...HQ },
+    Sector: null,
+    TeamStatusType: TEAM_STATUS[status],
+    TeamType: TEAM_TYPE_FIELD,
+    // NOTE: the captured sample team had no members, so this element shape
+    // (TeamLeader + Person) is taken from models/Team.js, not from Beacon.
+    Members: Array.from({ length: memberCount }, (_, m) => ({ TeamLeader: m === 0, Person: person(memberSeq++) })),
+    Resources: [],
+    Tags: [],
+    Capabilities: [],
+    TaskedJobCount: jobIdx.length,
+    IsDeleted: false,
+  }));
+
+  // The thin team shape Beacon embeds inside a tasking.
+  const taskingTeam = (tm) => ({
+    Id: tm.Id,
+    Callsign: tm.Callsign,
+    CreatedAtId: tm.CreatedAt.Id,
+    TeamTypeId: tm.TeamType.Id,
+    CurrentStatusId: tm.TeamStatusType.Id,
+    Members: tm.Members,
+    IsDeleted: false,
+  });
+
+  const taskings = [];
+  // A tasking row: `reached` = how many TASKING_STEPS are done, at stepTimes.
+  // `est` = { eta, etc } in minutes from now (negative = already past).
+  const taskingRow = (tm, j, sequence, reached, stepTimes, est = {}) => {
+    const history = TASKING_STEPS.slice(0, reached).map(([id, name], k) => ({
+      Type: id, Name: name, Description: name, TimeLogged: stepTimes[k], EstimatedCompletion: null,
+      CreatedOn: stepTimes[k], CreatedBy: OPERATOR,
+    }));
+    const [curId, curName] = TASKING_STEPS[reached - 1];
+    const stamp = (k) => (k < reached ? stepTimes[k] : null);
+    return {
+      Id: 90000 + taskings.length,
+      CurrentStatus: curName,
+      CurrentStatusTime: stepTimes[reached - 1],
+      CurrentStatusId: curId,
+      EstimatedStatusEndTime: null,
+      Enroute: stamp(1),
+      // ETA: the arrival time once onsite, else the estimate given on Enroute.
+      EnrouteEstimatedCompletion: reached > 2 ? stepTimes[2] : reached === 2 && est.eta != null ? t(-est.eta / 60) : null,
+      Onsite: stamp(2),
+      OnsiteEstimatedCompletion: reached > 2 && est.etc != null ? t(-est.etc / 60) : null,
+      Offsite: stamp(3),
+      Complete: null,
+      Team: taskingTeam(tm),
+      Job: taskingJob(j),
+      Sequence: sequence,
+      Manifest: [],
+      DistanceToScene: null,
+      InjuriesSustained: false,
+      AARCompleted: false,
+      CISPRequired: false,
+      RiskAssessmentCompleted: false,
+      VesselUsed: false,
+      PrimaryActivityType: null,
+      PrimaryTaskType: null,
+      ActionTaken: null,
+      EquipmentUsed: [],
+      EquipmentKeptByName: null,
+      EquipmentKeptByNumber: null,
+      Injuries: [],
+      SafetyManagementSheet: null,
+      JobTeamStatusTypeHistory: history,
+    };
+  };
+  // ETA/ETC per team for its under-way job, covering each countdown state:
+  // on track, due within 5 min, and overdue by more than 5 min (alert).
+  const ESTIMATES = [{ etc: 35 }, { eta: -14 }, { etc: 4 }, { eta: 9 }];
+  TEAM_SPECS.forEach(([, , , jobIdx], ti) => {
+    jobIdx.forEach((ji, seq) => {
+      // First job in a team's queue is under way; the rest are just tasked.
+      const reached = seq === 0 ? (ti % 2 === 0 ? 3 : 2) : 1; // how many TASKING_STEPS are done
+      const startH = Math.max(0.15, JOB_SPECS[ji][4] - 0.1);
+      const stepTimes = TASKING_STEPS.slice(0, reached).map((_, k) => t(startH - k * 0.05));
+      taskings.push(taskingRow(teams[ti], jobs[ji], seq + 1, reached, stepTimes, seq === 0 ? ESTIMATES[ti] : {}));
+    });
+  });
+
+  // What POST /Api/v1/Tasking creates (the mock calls this): a new "Tasked"
+  // tasking at the end of the team's queue, so a "Task Team" click-through
+  // shows the team on the incident after LAD refetches.
+  const createTasking = (teamId, jobId) => {
+    const tm = teams.find((x) => x.Id === Number(teamId));
+    const j = jobs.find((x) => x.Id === Number(jobId));
+    if (!tm || !j) return null;
+    const seq = taskings.filter((x) => x.Team.Id === tm.Id).length + 1;
+    const row = taskingRow(tm, j, seq, 1, [t(0)]);
+    taskings.push(row);
+    return row;
+  };
+
+  // PSN radio positions: a bare array of GeoJSON features (Beacon's
+  // ResourceLocations/Radio), see BeaconClient/asset.js.
+  const radio = TEAM_SPECS.filter((s) => s[4]).map(([, , , jobIdx, assetName, [dLat, dLng]], i) => {
+    const anchor = jobIdx.length ? jobs[jobIdx[0]].Address : HQ;
+    const lat = +(anchor.Latitude + dLat).toFixed(5);
+    const lng = +(anchor.Longitude + dLng).toFixed(5);
+    const seen = t(0.05);
+    const id = 6100 + i;
+    return {
+      type: 'Feature',
+      id,
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: {
+        type: 'Feature',
+        id,
+        name: assetName,
+        capability: i % 2 ? null : 'Storm',
+        entity: HQ.Name,
+        resourceType: 'Vehicle',
+        sourceType: 'SAP',
+        licensePlate: `DM${String(10 + i * 7).padStart(2, '0')}XX`,
+        serialNumber: `000DEMO${String(i).padStart(3, '0')}`,
+        radioId: 9900000 + i,
+        equipmentId: String(99000000 + i),
+        lastSeen: seen,
+        status: 'COMM',
+        direction: null,
+        talkgroup: i % 2 ? null : 'DEMO OPS 1',
+        talkgroupLastUpdated: i % 2 ? null : seen,
+        smartConnect: 'ACTIVE',
+        radioLatitude: lat,
+        radioLongitude: lng,
+        radioLocationLastUpdated: seen,
+        // DEM02 also carries a satellite tracker, so the satellite icon and
+        // "Satellite:" line show in the asset popup and library.
+        ...(assetName === 'DEM02' ? satellite({ n: 1, lat, lng, seen, cls: 'Class 3 RIB', status: 'ACTIVE', battery: 'Good' }) : satellite()),
+      },
+    };
+  });
+
+  // A satellite-only boat (no PSN radio) with an inactive tracker and a flat
+  // battery. It matches no team, so it only shows on the Unmatched layer.
+  {
+    const lat = +(HQ.Latitude - 0.011).toFixed(5);
+    const lng = +(HQ.Longitude + 0.009).toFixed(5);
+    const seen = t(30);
+    const id = 6190;
+    radio.push({
+      type: 'Feature',
+      id,
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: {
+        type: 'Feature',
+        id,
+        name: 'DEMB1',
+        capability: 'Flood Rescue',
+        entity: HQ.Name,
+        resourceType: 'Vessel',
+        sourceType: 'SAP',
+        licensePlate: null,
+        serialNumber: null,
+        radioId: null,
+        equipmentId: null,
+        lastSeen: seen,
+        status: null,
+        direction: null,
+        talkgroup: null,
+        talkgroupLastUpdated: null,
+        smartConnect: null,
+        radioLatitude: null,
+        radioLongitude: null,
+        radioLocationLastUpdated: null,
+        ...satellite({ n: 2, lat, lng, seen, cls: 'Class 4 Punt', status: 'NON ACTIVE', battery: 'Replace' }),
+      },
+    });
+  }
+
+  // Vehicle telematics: a FeatureCollection (Beacon's
+  // ResourceLocations/Telematics). displayName is "<callsign> <model>",
+  // timestamp is epoch seconds.
+  const telematics = {
+    type: 'FeatureCollection',
+    features: [
+      ['DEM40', 'Isuzu D-Max', [-33.8061, 151.0122]],
+      ['DEM41', 'Toyota HiLux', [-33.8243, 150.9874]],
+    ].map(([cs, model, [lat, lng]], i) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: {
+        id: `f-00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+        type: 'vehicle',
+        source: 'telematics',
+        displayName: `${cs} ${model}`,
+        timestamp: Math.floor(now.getTime() / 1000) - 120 * (i + 1),
+        ignitionOn: i === 0,
+        direction: 90 * i,
+        speed: 0,
+        eventTypeDescription: 'Health Check',
+        prettyAddress: `${ADDRESSES[i + 2][0]} ${ADDRESSES[i + 2][1]}, ${ADDRESSES[i + 2][2]} NSW ${ADDRESSES[i + 2][3]}, Australia`,
+        orgUnit: HQ.Code,
+      },
+    })),
+  };
+
+  const stampTag = (x) => ({ ...x, CreatedOn: '2015-01-01T00:00:00', CreatedBy: 1 });
+  const tagGroups = {
+    5: [TAGS.BranchDown, TAGS.TreeOnHouse].map(stampTag),
+    6: [TAGS.RoofLeak].map(stampTag),
+    ...Object.fromEntries(Object.entries(OPS_TAG_GROUPS).map(([groupId, tags]) => [groupId, tags.map(stampTag)])),
+  };
+
+  // What POST /Api/v1/OperationsLog creates (the mock calls this with the
+  // form fields LAD sends), so a submitted log shows in the incident timeline.
+  const allTags = Object.values(tagGroups).flat();
+  const createOpsLogEntry = (form) => {
+    const j = jobs.find((x) => x.Id === Number(form.get('JobId'))) || null;
+    const tagIds = form.getAll('TagIds[]').map(Number);
+    const tags = allTags.filter((tag) => tagIds.includes(tag.Id)).map(({ Id, Name, TagGroupId, Description }) => ({ Id, Name, TagGroupId, Description }));
+    const row = opsLogRow(41000 + opsLog.length, j, form.get('Subject') || '', form.get('Text') || '', tags, t(0), form.get('ActionRequired') === 'true');
+    opsLog.push(row);
+    return row;
+  };
+
+  // Job history endpoint shape (Jobs/{id}/History).
+  const jobHistory = (jobId) => {
+    const j = jobs.find((x) => x.Id === jobId);
+    if (!j) return [];
+    return j.JobStatusTypeHistory.map((h) => ({
+      Name: h.Name, Description: `Status changed to ${h.Name}`, TimeLogged: h.Timelogged, TimeStamp: h.CreatedOn, CreatedBy: h.CreatedBy,
+    }));
+  };
+
+  // Image/IncidentThumbnails per job.
+  const photos = new Map(Object.entries(PHOTO_COUNTS).map(([ji, n]) => [jobs[ji].Id, photoList(jobs[ji].Id, n)]));
+
+  // Jobs/Search with ViewModelType=2 returns the same lean shape -- the only
+  // search model carrying ImageCount.
+  const leanJobs = jobs.map(taskingJob);
+
+  return {
+    hq: HQ, jobs, leanJobs, teams, taskings, radio, telematics, tagGroups, jobHistory, opsLog, photos, icemsIncidents: ICEMS_INCIDENTS, timezone: TZ,
+    createTasking, createOpsLogEntry,
+  };
+}

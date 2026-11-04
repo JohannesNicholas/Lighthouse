@@ -3,12 +3,14 @@ import ko from "knockout";
 
 import { Entity } from "./Entity.js";
 import { Sector } from "./Sector.js";
+import { primaryEtaTasking } from "./Tasking.js";
 
 import { openURLInBeacon } from '../utils/chromeRunTime.js';
 
 import { Enum } from '../utils/enum.js';
 
 import { loadSharedMapping, saveSharedMapping, pushSharedDefault, fetchSharedDefaults } from '../utils/defaultAssetSync.js';
+import { getSingleFetchCooldownMs } from '../signalr/pushMode.js';
 
 // Shared across all Team instances — single localStorage key
 const _capKey = 'lh_showCapabilities';
@@ -50,6 +52,12 @@ let _apiUrl = null;
 /** Called once from main.js after params are resolved. */
 export function setDefaultAssetApiUrl(url) { _apiUrl = url; }
 
+/** Async getter for the current Beacon access token, e.g. `() => getToken()`. */
+let _getToken = null;
+
+/** Called once from main.js after params are resolved. */
+export function setDefaultAssetTokenGetter(getTokenFn) { _getToken = getTokenFn; }
+
 function _setDefaultAsset(teamId, assetId) {
     const map = loadSharedMapping();
 
@@ -72,13 +80,12 @@ function _setDefaultAsset(teamId, assetId) {
     _defaultAssetTick(_defaultAssetTick() + 1);
 
     // Push to Lambda / S3 backend so other browsers pick it up (fire-and-forget)
-    if (_apiUrl) {
-        pushSharedDefault(_apiUrl, teamId, assetId);
+    if (_apiUrl && _getToken) {
+        Promise.resolve(_getToken()).then((token) => pushSharedDefault(_apiUrl, teamId, assetId, token));
     }
 }
 
 export function Team(data = {}, deps = {}) {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
 
 
     /// TEAMS MIGHT NOT HAVE A CURRENTSTATUS IF THEY WERE CREATED FROM TASKING ONLY
@@ -88,18 +95,24 @@ export function Team(data = {}, deps = {}) {
     const self = this;
     self.lastTaskingDataUpdate = new Date();
 
+    // Cooldown between single-team on-demand fetches (refreshData/
+    // fetchTasking), whether triggered by expand/popup-open or by a push
+    // already having delivered fresh data -- tighter when SignalR push is
+    // disabled, see pushMode.js.
+    // Bumped by updateFromJson on every merge regardless of source (push or
+    // fetch) -- lets refreshData() skip a redundant expand/popup-open
+    // refetch right after a push already delivered fresh data.
+    self.lastDataUpdate = new Date();
+
     const {
         upsertTasking,
         getTeamTasking,
         fetchTeamById,
         makeTeamLink = () => '#',
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
         flyToAsset = () => { },
         teamTaskStatusFilter = () => [],
         currentlyOpenMapPopup = () => null,
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
         openRadioLogModal = () => { },
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
         openSMSTeamModal = () => { },
         isTeamPinned = () => false,
         toggleTeamPinned = () => false,
@@ -128,6 +141,7 @@ export function Team(data = {}, deps = {}) {
     self.callsign = ko.observable(data.Callsign ?? "");
     self.assignedTo = ko.observable(new Entity(data.AssignedTo || data.CreatedAt)); //safety code for beacon bug
     self.teamStatusType = ko.observable(data.TeamStatusType || null); // {Id,Name,Description}
+    self.teamType = ko.observable(data.TeamType || null); // {Id,Name} -- Field / Operations / Aviation
     self.sector = ko.observable(new Sector(data.Sector || {}));
     self.members = ko.observableArray(data.Members);
     self.taskedJobCount = ko.observable(data.TaskedJobCount || 0);
@@ -160,7 +174,8 @@ export function Team(data = {}, deps = {}) {
     self.trackableAssets.subscribe(assets => {
         if (assets.length > 1 && !_hadMultipleAssets && _apiUrl) {
             _hadMultipleAssets = true;
-            fetchSharedDefaults(_apiUrl, [String(self.id())])
+            Promise.resolve(_getToken?.())
+                .then(token => fetchSharedDefaults(_apiUrl, [String(self.id())], token))
                 .then(() => _defaultAssetTick(_defaultAssetTick() + 1))
                 .catch(() => { /* im not empty i promise */ });
         } else if (assets.length <= 1) {
@@ -258,7 +273,8 @@ export function Team(data = {}, deps = {}) {
         self.refreshData();
 
         if (_apiUrl && (self.trackableAssets?.() || []).length > 1) {
-            fetchSharedDefaults(_apiUrl, [String(self.id())])
+            Promise.resolve(_getToken?.())
+                .then(token => fetchSharedDefaults(_apiUrl, [String(self.id())], token))
                 .then(() => _defaultAssetTick(_defaultAssetTick() + 1))
                 .catch(() => {/* im not empty i promise */});
         }
@@ -274,21 +290,29 @@ export function Team(data = {}, deps = {}) {
         self.rowHasFocus(false);
     }
 
-    self.refreshData = async function () {
+    self.refreshData = async function (opts = {}) {
+        const force = opts.force === true;
+        if (!force && Date.now() - self.lastDataUpdate.getTime() < getSingleFetchCooldownMs()) {
+            console.log(`[Team ${self.id.peek()}] refreshData throttled — last refreshed ${Date.now() - self.lastDataUpdate.getTime()}ms ago`);
+            return;
+        }
         self.taskingLoading(true);
-        fetchTeamById(self.id(), () => {
+        try {
+            await fetchTeamById(self.id());
+        } finally {
             self.taskingLoading(false);
-        });
+        }
     };
 
 
-    self.refreshDataAndTasking = function () {
-        self.fetchTasking();
-        self.refreshData();
+    self.refreshDataAndTasking = function (opts = {}) {
+        self.fetchTasking(opts);
+        self.refreshData(opts);
 
         // If this team has multiple assets, refresh shared default mapping
         if (_apiUrl && (self.trackableAssets?.() || []).length > 1) {
-            fetchSharedDefaults(_apiUrl, [String(self.id())])
+            Promise.resolve(_getToken?.())
+                .then(token => fetchSharedDefaults(_apiUrl, [String(self.id())], token))
                 .then(() => _defaultAssetTick(_defaultAssetTick() + 1))
                 .catch(() => {/* im not empty i promise */});
         }
@@ -429,6 +453,18 @@ export function Team(data = {}, deps = {}) {
         });
     });
 
+    // The listed tasking whose ETA/ETC matters most (soonest ETA, else
+    // soonest ETC) and its etaInfo -- drives the chip on the team row.
+    self.etaTasking = ko.pureComputed(() => primaryEtaTasking(self.filteredTaskings()));
+    self.etaInfo = ko.pureComputed(() => {
+        const t = self.etaTasking();
+        return t ? t.etaInfo() : null;
+    });
+    self.etaTitle = ko.pureComputed(() => {
+        const t = self.etaTasking();
+        return t ? `${t.job.identifier()}: ${t.etaInfo().title}` : '';
+    });
+
     // ── Reorder mode ──
     self.reorderMode = ko.observable(false);
     self.reorderList = ko.observableArray([]);
@@ -523,7 +559,10 @@ export function Team(data = {}, deps = {}) {
     });
 
     self.updateStatusById = function (statusId) {
-        const status = Enum.TeamStatusType.some(s => s.Id === statusId);
+        // TeamStatusType is a plain object keyed by name, not an array --
+        // .some() would either throw or (if it somehow ran) return a
+        // boolean, not the matching entry.
+        const status = Object.values(Enum.TeamStatusType).find(s => s.Id === statusId);
         if (status) {
             self.teamStatusType(status);
         }
@@ -539,7 +578,7 @@ export function Team(data = {}, deps = {}) {
         const lastFetch = self._lastFetchTaskingTime || 0;
         const lastData = self.lastTaskingDataUpdate?.getTime?.() ?? 0;
         const lastRefresh = Math.max(lastFetch, lastData);
-        if (!force && now - lastRefresh < 10000) {
+        if (!force && now - lastRefresh < getSingleFetchCooldownMs()) {
             console.log(`[Team ${self.id.peek()}] fetchTasking throttled — last refreshed ${now - lastRefresh}ms ago`);
             self.taskingLoading(false); // clear loading state since data is already fresh
             return;
@@ -548,7 +587,7 @@ export function Team(data = {}, deps = {}) {
         self.taskingLoading(true);
         getTeamTasking(self.id.peek())
             .then(tasking => {
-                (tasking?.Results || []).forEach(t =>
+                (tasking?.results || []).forEach(t =>
                     upsertTasking(t, { teamContext: self })
                 );
             })
@@ -582,7 +621,12 @@ export function Team(data = {}, deps = {}) {
         if (self.isFilteredIn() === false) return;
 
         const assets = self.trackableAssets();
-        if (!assets || assets.length === 0) return;
+        // Nothing to fly to, so no asset popup opens to expand the team
+        // (onPopupOpen) -- expand it in the list directly.
+        if (!assets || assets.length === 0) {
+            self.focusAndExpandInList();
+            return;
+        }
         const op = currentlyOpenMapPopup();
         let nextIdx = 0;
 
@@ -617,12 +661,31 @@ export function Team(data = {}, deps = {}) {
     }
 
     Team.prototype.updateFromJson = function (d = {}) {
+        this.lastDataUpdate = new Date();
         if (d.Id !== undefined && d.Id !== this.id()) this.id(d.Id);
         if (d.TaskedJobCount !== undefined && d.TaskedJobCount !== this.taskedJobCount()) this.taskedJobCount(d.TaskedJobCount);
         if (d.Callsign !== undefined && d.Callsign !== this.callsign()) this.callsign(d.Callsign);
         if (d.TeamStatusType !== undefined) {
+            let status = d.TeamStatusType;
+            if (status && status.Name === undefined && status.Id != null) {
+                // Some pushes (e.g. teamCreated/teamUpdated) send a reduced
+                // {Id} object rather than the full {Id,Name,Description} --
+                // resolve the full entry from the static enum instead of
+                // storing the partial object, which would leave
+                // teamStatusType().Name (and therefore status display) blank.
+                status = Object.values(Enum.TeamStatusType).find(s => s.Id === status.Id) || status;
+            }
             const cur = this.teamStatusType();
-            if (!cur || cur.Id !== d.TeamStatusType?.Id) this.teamStatusType(d.TeamStatusType);
+            if (!cur || cur.Id !== status?.Id) this.teamStatusType(status);
+        }
+        if (d.TeamType !== undefined) {
+            let type = d.TeamType;
+            if (type && type.Name === undefined && type.Id != null) {
+                // Reduced {Id} objects (some pushes) -- resolve the full entry.
+                type = Object.values(Enum.TeamType).find(t => t.Id === type.Id) || type;
+            }
+            const cur = this.teamType();
+            if (!cur || cur.Id !== type?.Id) this.teamType(type);
         }
         if (d.Members !== undefined) {
             // Members is an array of objects — compare by length + leader/person ids

@@ -1,12 +1,19 @@
 import BeaconClient from '../../../shared/BeaconClient.js';
 import L from "leaflet";
+import {
+  transportHazardColour,
+  transportHazardIcon,
+  transportHazardRows,
+  transportHazardShapes,
+} from "../utils/transportHazard.js";
+import { escapeHtml, sanitizeFeedHtml } from "../utils/feedHtml.js";
 
 
 export function registerTransportCamerasLayer(vm, map, getToken, apiHost, params) {
   vm.mapVM.registerPollingLayer("transport-cameras", {
     label: "Transport NSW Cameras",
     menuGroup: "Transport NSW",
-    refreshMs: 601200000, // 20 mins poll. the cameras list doesnt change and the images auto-refresh
+    refreshMs: 3600000, // 1 hr poll. the cameras list doesnt change and the images auto-refresh
     visibleByDefault: localStorage.getItem(`ov.transport-cameras`) || false,
     fetchFn: async () => {
       const t = await getToken(); // blocks until token is ready
@@ -42,7 +49,7 @@ export function registerTransportCamerasLayer(vm, map, getToken, apiHost, params
             iconAnchor: [16, 16],
             popupAnchor: [0, -16],
           }),
-        }).bindPopup(details);
+        }).bindPopup(details, { pane: "pane-popup-top" });
 
         layerGroup.addLayer(marker);
       });
@@ -50,109 +57,97 @@ export function registerTransportCamerasLayer(vm, map, getToken, apiHost, params
   });
 }
 
+// Transport NSW managed incidents plus council (LGA) reported closures/hazards,
+// e.g. regional road closures entered via OneRoad. The council reports are a
+// separate Live Traffic feed (v1/live/hazards/regional-lga-incident/open), so
+// fetch both and draw them as one layer.
 export function registerTransportIncidentsLayer(vm, map, getToken, apiHost, params) {
   vm.mapVM.registerPollingLayer("transport-incidents", {
     label: "Transport NSW Incidents",
     menuGroup: "Transport NSW",
-    refreshMs: 601200000, // 20 mins poll
-    visibleByDefault: localStorage.getItem(`ov.transport-incidents`) || false,
+    refreshMs: 600000, // 10 mins poll
+    visibleByDefault: localStorage.getItem("ov.transport-incidents") || false,
     fetchFn: async () => {
       const t = await getToken(); // blocks here until token is ready
-      const res = await fetchTransportIncidentsAsync(apiHost, params.userId, t);
-      if (!res.ok) throw new Error("transport-incidents fetch failed: " + res.status);
-      return res.response;
+      // type is also the background.js message type
+      const [incidents, council] = await Promise.allSettled(
+        ["transport-incidents", "transport-local-reports"].map((type) =>
+          fetchTransportFeedAsync(type, apiHost, params.userId, t),
+        ),
+      );
+      if (incidents.status === "rejected" && council.status === "rejected") {
+        throw new Error("transport-incidents fetch failed: " + (incidents.reason?.httpCode ?? ""));
+      }
+      const features = (result) =>
+        result.status === "fulfilled" && Array.isArray(result.value.response?.features)
+          ? result.value.response.features
+          : [];
+      return {
+        incidents: features(incidents),
+        // Live Traffic hides ended council reports; the old Lighthouse map also left out council roadworks.
+        council: features(council).filter(
+          (f) => !f.properties?.ended && f.properties?.CategoryIcon !== "Roadworks",
+        ),
+      };
     },
-    drawFn: (layerGroup, geojson) => {
-      if (!geojson || !Array.isArray(geojson.features)) return;
+    drawFn: (layerGroup, data) => {
+      if (!data) return;
+      const drawHazard = (f, council) => {
+        if (!f?.properties) return;
+        const { points, lines, areas } = transportHazardShapes(f);
+        if (points.length === 0 && lines.length === 0 && areas.length === 0) return;
 
-      geojson.features.forEach((f) => {
-        if (!f.geometry || f.geometry.type.toLowerCase() !== "point") return;
+        const icon = transportHazardIcon(f, { council });
+        const colour = transportHazardColour(f, { council });
+        const popupTitle = council ? "Council Report" : "Traffic Hazard";
 
-        let icon =
-          "https://www.livetraffic.com/assets/icons/map/general-hazards/moderate-now.svg";
+        const details = [
+          `<strong>${escapeHtml(popupTitle)}: ${escapeHtml(f.properties.displayName || f.properties.mainCategory || "Incident")}</strong>`,
+          ...transportHazardRows(f, { council }).map(
+            ([label, text, opts]) =>
+              `<strong>${escapeHtml(label)}:</strong> ${
+                opts?.html ? `<div class="lh-feed-html">${sanitizeFeedHtml(text)}</div>` : escapeHtml(text)
+              }`,
+          ),
+        ].join("<br>");
 
-        switch (f.properties.mainCategory) {
-          case "Hazard":
-            icon =
-              "https://www.livetraffic.com/assets/icons/map/general-hazards/moderate-now.svg";
-            break;
-          case "Crash":
-            icon =
-              "https://www.livetraffic.com/assets/icons/map/crashes/moderate-now.svg";
-            break;
-          case "Breakdown":
-            icon =
-              "https://www.livetraffic.com/assets/icons/map/breakdowns/moderate-now.svg";
-            break;
-          case "Traffic lights blacked out":
-            icon =
-              "https://www.livetraffic.com/assets/icons/map/other-hazards/tralights.svg";
-            break;
-          case "Changed traffic conditions":
-            icon =
-              "https://www.livetraffic.com/assets/icons/map/changed-traffic/moderate-now.svg";
-            break;
-        }
+        // Affected areas and stretches of road, as Live Traffic draws them; click for the same popup.
+        areas.forEach((rings) => {
+          layerGroup.addLayer(
+            L.polygon(rings, { color: colour, weight: 1, fillColor: colour, fillOpacity: 0.2, pane: "pane-lowest-plus" })
+              .bindPopup(details, { pane: "pane-popup-top" }),
+          );
+        });
+        lines.forEach((line) => {
+          layerGroup.addLayer(
+            L.polyline(line, { color: colour, weight: 6, opacity: 0.8, pane: "pane-middle" })
+              .bindPopup(details, { pane: "pane-popup-top" }),
+          );
+        });
 
-        const details = `
-          <strong>Traffic Hazard: ${f.properties.displayName || "Unknown"}</strong>
-          <br>
-          <strong>Location:</strong> ${f.properties.roads[0]?.mainStreet || "Unknown"}
-          ${f.properties.roads[0]?.locationQualifier || ""} 
-          ${f.properties.roads[0]?.suburb || ""}
-          <br>
-          <strong>Category:</strong> ${f.properties.mainCategory || "Unknown"}
-          <br>
-          <strong>Advice:</strong> ${f.properties.adviceA || ""} ${f.properties.adviceB || ""} ${
-            f.properties.adviceC || ""
-          }
-          <br>
-          <strong>Details:</strong> ${
-            f.properties.otherAdvice || "No additional details available."
-          }
-          <br>
-          <strong>Speed Limit:</strong> ${f.properties.speedLimit || "N/A"} km/h
-          <br>
-          <strong>Start:</strong> ${
-            f.properties.start ? new Date(f.properties.start).toLocaleString() : "Unknown"
-          }
-          <br>
-          <strong>End:</strong> ${
-            f.properties.hideEndDate
-              ? "Ongoing"
-              : f.properties.end
-              ? new Date(f.properties.end).toLocaleString()
-              : "Unknown"
-          }
-          <br>
-          <strong>Managed By:</strong> ${
-            f.properties.attendingGroups?.join(", ") || "Unknown"
-          }
-        `;
+        points.forEach((latLng) => {
+          const marker = L.marker(latLng, {
+            icon: L.icon({
+              iconUrl: icon,
+              iconSize: [32, 32],
+              iconAnchor: [16, 16],
+              popupAnchor: [0, -16],
+            }),
+          }).bindPopup(details, { pane: "pane-popup-top" });
 
-        const [lng, lat] = f.geometry.coordinates || [];
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-        const marker = L.marker([lat, lng], {
-          icon: L.icon({
-            iconUrl: icon,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
-            popupAnchor: [0, -16],
-          }),
-        }).bindPopup(details);
-
-        layerGroup.addLayer(marker);
-      });
+          layerGroup.addLayer(marker);
+        });
+      };
+      data.incidents.forEach((f) => drawHazard(f, false));
+      data.council.forEach((f) => drawHazard(f, true));
     },
   });
 }
 
 
-function getTransportApiKeyOpsLog(apiHost, userId, token, cb) {
+async function getTransportApiKeyOpsLog(apiHost, userId, token) {
 
     var opsId = null;
-
     switch (apiHost) {
         case 'https://previewbeacon.ses.nsw.gov.au':
             opsId = '46273';
@@ -167,10 +162,8 @@ function getTransportApiKeyOpsLog(apiHost, userId, token, cb) {
             opsId = '0';
     }
 
-    BeaconClient.operationslog.get(opsId, apiHost, userId, token, function (response) {
-        let key = response.Text;
-        cb(key)
-    })
+    const response = await BeaconClient.operationslog.get(opsId, { host: apiHost, userId, token });
+    return response.Text;
 }
 
 
@@ -179,12 +172,8 @@ async function fetchTransportCamerasAsync(apiHost, userId, token) {
     let transportApiKeyCache = sessionStorage.getItem(sessionKey);
 
     if (!transportApiKeyCache) {
-        transportApiKeyCache = await new Promise((resolve) => {
-            getTransportApiKeyOpsLog(apiHost, userId, token, function (key) {
-                sessionStorage.setItem(sessionKey, key);
-                resolve(key);
-            });
-        });
+        transportApiKeyCache = await getTransportApiKeyOpsLog(apiHost, userId, token);
+        sessionStorage.setItem(sessionKey, transportApiKeyCache);
     }
 
     return new Promise((resolve, reject) => {
@@ -199,23 +188,20 @@ async function fetchTransportCamerasAsync(apiHost, userId, token) {
     });
 }
 
-async function fetchTransportIncidentsAsync(apiHost, userId, token) {
+// type is the background.js message type: 'transport-incidents' or 'transport-local-reports'
+async function fetchTransportFeedAsync(type, apiHost, userId, token) {
     let sessionKey = 'lighthouseTransportApiKeyCache';
     let transportApiKeyCache = sessionStorage.getItem(sessionKey);
 
     if (!transportApiKeyCache) {
-        transportApiKeyCache = await new Promise((resolve) => {
-            getTransportApiKeyOpsLog('https://trainbeacon.ses.nsw.gov.au', apiHost, userId, token, function (key) {
-                sessionStorage.setItem(sessionKey, key);
-                resolve(key);
-            });
-        });
+        transportApiKeyCache = await getTransportApiKeyOpsLog(apiHost, userId, token);
+        sessionStorage.setItem(sessionKey, transportApiKeyCache);
     }
 
     return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ type: 'transport-incidents', params: { apiKey: transportApiKeyCache } }, function (response) {
+        chrome.runtime.sendMessage({ type, params: { apiKey: transportApiKeyCache } }, function (response) {
             if (response.error) {
-                console.error(`Update to transport-incidents failed: ${response.error} http-code:${response.httpCode}`);
+                console.error(`Update to ${type} failed: ${response.error} http-code:${response.httpCode}`);
                 reject(response);
             } else {
                 resolve({ok: true, response});

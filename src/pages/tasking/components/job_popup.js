@@ -6,19 +6,20 @@ export function buildJobPopupKO() {
          class="fw-bold text-center"
          style="color:white;background: black">
          <span class="no-drag" data-bind="text: identifier"></span>
-         <em class="fa fa-fw fa-share-alt" data-bind="visible: icemsIncidentIdentifier, attr:{ title: icemsIncidentIdentifier }, css: { 'text-danger': hasUnacceptedNotifications() }"></em>
+         <em class="fa fa-fw fa-share-alt" data-bind="visible: icemsIncidentIdentifier, attr:{ title: icemsIncidentIdentifier }, css: { 'text-danger': hasUnacceptedNotifications() }, flashTextOnChange: hasUnacceptedNotifications"></em>
          </div>
     <div id="jobType"
          class="fw-bold text-center"
          style="color:white;"
          data-bind="style: { backgroundColor: bannerBGColour},
-                    text: typeName() + ' - ' + statusName()"></div>
+                    text: typeName() + ' - ' + statusName(),
+                    flashTextOnChange: typeName() + ' - ' + statusName()"></div>
 
     <div id="jobPriority"
          class="text-center"
          style="color:white;"
          data-bind="style: { backgroundColor: bannerBGColour}">
-      <span id="priAndCat" data-bind="text: priorityName +' '+categoriesName"></span>
+      <span id="priAndCat" data-bind="text: priorityName +' '+categoriesName, flashTextOnChange: priorityName() + ' ' + categoriesName()"></span>
     </div>
     <!-- Unacknowledged Notifications Warning -->
     <!-- ko if: hasUnacceptedNotifications() -->
@@ -32,9 +33,11 @@ export function buildJobPopupKO() {
     </div>
     <!-- /ko -->
     <!-- New line to show tag.Name if actionRequiredTags has length -->
-    <div id="actionRequiredTags" class="text-center d-flex flex-wrap mt-1" data-bind="visible: actionRequiredTags().length > 0, foreach: actionRequiredTagsDeduplicated">
-        <span data-bind="class: returnTagClass" style="cursor: default; width: 100%;">
-          <i data-bind="class: returnTagIcon"></i> <span data-bind="text: name"></span>
+    <div id="actionRequiredTags" class="text-center d-flex flex-wrap mt-1"
+         data-bind="visible: actionRequiredTags().length > 0, click: $root.displayTimelineForJob, clickBubble: false, foreach: actionRequiredTagsGrouped"
+         role="button" title="Open timeline" style="cursor: pointer;">
+        <span data-bind="class: tag.returnTagClass" style="cursor: pointer; width: 100%;">
+          <i data-bind="class: tag.returnTagIcon"></i> <span data-bind="text: label"></span>
         </span>
       </div>
 <!-- Assign to Team Dropdown -->
@@ -69,7 +72,7 @@ export function buildJobPopupKO() {
                       data-bind="click: refreshDataAndTasking, clickBubble: false">
                       <i class="fa fa-sync"></i>
                   </button>                 
-           <ul class="dropdown-menu dropdown-menu-end p-2  job-taskteam-dropdown"
+           <ul class="dropdown-menu p-2  job-taskteam-dropdown"
        data-bind="attr: { id: 'tmAssignTeamMenu-' + $root.job.id, 'aria-labelledby': 'tmAssignTeamBtn-' + $root.job.id }"
        style="min-width: 260px;"
        data-bs-popper="static">
@@ -126,14 +129,14 @@ export function buildJobPopupKO() {
       </div>
     </div>
     <!-- Address -->
-    <div class="text-center fw-bold mt-2"><span class="no-drag" data-bind="text: (address.prettyAddress && address.prettyAddress()) || ''"></span></div>
+    <div class="text-center fw-bold mt-2"><span class="no-drag" data-bind="text: (address.prettyAddress && address.prettyAddress()) || '', flashTextOnChange: (address.prettyAddress && address.prettyAddress()) || ''"></span></div>
     <!-- ko if: address.additionalAddressInfo() -->
     <div class="text-center text-muted mt-2><span class="no-drag" data-bind="text: (address.additionalAddressInfo()) || ''"></span></div>
     <!-- /ko -->
 
     <div id="JobDetails" style="padding-top:10px;width:100%;margin:auto">
       <!-- SoS -->
-      <div id="JobSoS" class="text-center"><span data-bind="visible: !!situationOnScene(), text: situationOnScene"></span></div>
+      <div id="JobSoS" class="text-center"><span data-bind="visible: !!situationOnScene(), text: situationOnScene, flashTextOnChange: situationOnScene"></span></div>
       <div class="text-center no-drag" data-bind="visible: !situationOnScene()"><i>No situation on scene available.</i></div>
 
       <!-- Tags -->
@@ -155,24 +158,28 @@ export function buildJobPopupKO() {
               <th style="padding:6px 8px;border-bottom:1px solid #ddd">Actions</th>
             </tr>
           </thead>
-          <tbody data-bind="foreach: { data: sortedTaskings, afterRender:$root.updatePopup}">
+          <tbody data-bind="fadeForeach: { data: sortedTaskings, afterRender:$root.updatePopup}">
             <tr data-bind="event: {
             mouseenter: $root.drawCrowsFliesToAssetFromTasking,
             mouseleave: $root.removeCrowsFlies
-            }, click: team.markerFocus,
+            }, click: team && team.markerFocus,
             clickBubble: false,
             css: { 'job-popup__tasking-row': hasTeam(), 'job-popup__tasking-row--no-job': !hasTeam() }">
               <td style="padding:4px 8px;border-bottom:1px solid #eee"
                   data-bind="text: teamCallsign"></td>
               <td style="padding:4px 8px;border-bottom:1px solid #eee"><span class="badge"
-                data-bind="text: currentStatus, css: tagColorFromStatus()"></span></td>
-              <td style="padding:4px 8px;border-bottom:1px solid #eee"
-                  data-bind="text: statusTimeAgoLabel"></td>
+                data-bind="text: currentStatus, css: tagColorFromStatus(), flashOnChange: currentStatus"></span></td>
+              <td style="padding:4px 8px;border-bottom:1px solid #eee">
+                <div data-bind="text: statusTimeAgoLabel"></div>
+                <!-- ko with: etaInfo -->
+                <div class="eta-line" data-bind="text: clockLabel, css: lineClass, fastTooltip: title"></div>
+                <!-- /ko -->
+              </td>
               <td style="padding:4px 8px;border-bottom:1px solid #eee">
                 <div class="btn-group btn-group-sm" role="group" aria-label="Tasking actions">               
                   <button type="button" class="btn btn-small btn-outline-secondary"
                       title="Route to Asset"
-                      data-bind="click: $root.drawRouteToAsset, disable: !team.trackableAndIsFiltered(), clickBubble: false">
+                      data-bind="click: $root.drawRouteToAsset, disable: !team || !team.trackableAndIsFiltered(), clickBubble: false">
                       <!-- ko if: !$root.routeLoading() -->
                       <i class="fa fa-solid fa-car"></i>
                       <!-- /ko -->
@@ -182,7 +189,7 @@ export function buildJobPopupKO() {
                   </button>
                   <button type="button" class="btn btn-small btn-outline-secondary"
                       title="Fit Bounds"
-                      data-bind="click: $root.fitBoundsWithTasking, disable: !team.trackableAndIsFiltered(), clickBubble: false">
+                      data-bind="click: $root.fitBoundsWithTasking, disable: !team || !team.trackableAndIsFiltered(), clickBubble: false">
                       <i class="fa fa-solid fa-object-group"></i>
                   </button>
                 </div>

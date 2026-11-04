@@ -1,4 +1,5 @@
 var L = require('leaflet');
+import { assetLegendRows } from './asset_icon.js';
 
 // Legend control (collapsible)
 export const LegendControl = L.Control.extend({
@@ -6,6 +7,52 @@ export const LegendControl = L.Control.extend({
 
   onAdd() {
     const div = L.DomUtil.create("div", "legend-container leaflet-bar");
+
+    // Status → marker treatment rows. Hidden until config.showJobStatusOnMarkers
+    // is on (Map.applyJobStatusOnMarkers toggles the .legend-status-block wrapper).
+    // A grey circle marker (r6 @ 9,11) with the treatment drawn over it.
+    const strikeSvg = (cross) => {
+      const cas = 'stroke="#fff" stroke-width="3.6" stroke-linecap="round"';
+      const ink = 'stroke="#12181e" stroke-width="2.2" stroke-linecap="round"';
+      const a = cross
+        ? '<line x1="3" y1="5" x2="15" y2="17"/><line x1="3" y1="17" x2="15" y2="5"/>'
+        : '<line x1="3" y1="17" x2="15" y2="5"/>';
+      return `<g ${cas}>${a}</g><g ${ink}>${a}</g>`;
+    };
+    const dot = '<circle cx="9" cy="11" r="6" fill="#9aa3ad" stroke="#000" stroke-width="2"/>';
+    const STATUS_ROWS = [
+      { label: "New",
+        svg: `<circle cx="9" cy="11" r="8.4" fill="none" stroke="#f7931d" stroke-width="2.2"/>${dot}` },
+      { label: "Active",
+        svg: `<circle cx="9" cy="11" r="8.2" fill="none" stroke="#e5399b" stroke-width="2.2" stroke-dasharray="3.4 3" stroke-linecap="round"/>${dot}` },
+      { label: "Tasked", svg: dot },
+      { label: "Complete / Referred / Finalised", svg: `${dot}${strikeSvg(false)}` },
+      { label: "Cancelled / Rejected", svg: `${dot}${strikeSvg(true)}` },
+      { label: "Action required (any status)",
+        svg: `${dot}
+              <circle cx="16.4" cy="4.4" r="4.4" fill="#fff"/>
+              <circle cx="16.4" cy="4.4" r="3.5" fill="#e5484d"/>
+              <rect x="15.8" y="2.5" width="1.2" height="2.6" rx="0.6" fill="#fff"/><circle cx="16.4" cy="6.3" r="0.7" fill="#fff"/>` },
+    ];
+    const statusPipRows = STATUS_ROWS.map((r) => `
+        <div style="display:flex;align-items:center;gap:5px;">
+          <svg width="22" height="22" viewBox="0 0 22 22" style="flex-shrink:0;overflow:visible;">${r.svg}</svg>
+          <span>${r.label}</span>
+        </div>`).join("");
+
+    // Asset capability rows: a fixed-size pin (coloured ring, black core, like
+    // the map's) that a wrapping label can't squash, then the name and code.
+    const assetPin = (color) => `
+        <svg width="14" height="18" viewBox="-1 6 42 52" style="flex-shrink:0;margin-right:6px;" aria-hidden="true">
+          <path d="M20,56 L5.858,41.858 A20,20 0 1 1 34.142,41.858 Z" fill="${color}" stroke="#333" stroke-width="2"/>
+          <circle cx="20" cy="27.7" r="9" fill="#000"/>
+        </svg>`;
+    const assetRows = assetLegendRows().map((r) => `
+        <div style="display:flex;align-items:center;margin:2px 0;">
+          ${assetPin(r.color)}
+          <span>${r.name}${r.code ? ` <span class="legend-asset-code">${r.code}</span>` : ''}${r.note ? `<span class="legend-asset-code">, ${r.note}</span>` : ''}</span>
+        </div>`).join("");
+
     div.innerHTML = `
       <div class="legend-header d-flex justify-content-between align-items-center">
         <span class="fw-semibold">Legend</span><br>
@@ -47,6 +94,13 @@ export const LegendControl = L.Control.extend({
     </div>
 
 
+    <div class="legend-status-block d-none">
+      <div class="fw-semibold small mb-1 mt-2">Job Status <span class="text-muted fw-normal">(Any type)</span></div>
+      <div style="display:grid;grid-template-columns:1fr;row-gap:3px;" class="small">
+        ${statusPipRows}
+      </div>
+    </div>
+
     <div>
       <div class="fw-semibold small mb-1 mt-2">Overlays</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:4px;" class="small legend-ring">
@@ -75,10 +129,12 @@ export const LegendControl = L.Control.extend({
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 36 36" style="flex-shrink:0;overflow:visible;">
-            <polygon points="18,3 33,11.5 33,24.5 18,33 3,24.5 3,11.5" fill="#6b7280" stroke="rgba(247,147,29,0.9)" stroke-width="2"/>
+            <!-- Grey cluster badge with a solid pulsing orange hex outline,
+                 mirroring the real cluster-pulse-hex (Map.js iconCreateFunction). -->
+            <polygon points="18,0 36,10.5 36,25.5 18,36 0,25.5 0,10.5" fill="none" stroke="rgba(247,147,29,0.9)" stroke-width="2" style="transform-box:fill-box;transform-origin:center;animation:cluster-pulse-new 1.4s ease-out infinite;"/>
+            <polygon points="18,3 33,11.5 33,24.5 18,33 3,24.5 3,11.5" fill="#6b7280" stroke="#888" stroke-width="2"/>
             <polygon points="24.1,9 27.5,18 24.1,27 11.9,27 8.5,18 11.9,9" fill="#6b7280"/>
             <text x="18" y="18" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="13" font-weight="700" font-family="system-ui,sans-serif">3</text>
-            <polygon points="18,3 33,11.5 33,24.5 18,33 3,24.5 3,11.5" fill="none" stroke="#f7931d" stroke-width="2" stroke-dasharray="4 2"/>
           </svg>
           <span>Cluster Contains Unacked Incidents</span>
         </div>
@@ -86,91 +142,15 @@ export const LegendControl = L.Control.extend({
       </div>
 
 
+  <div>
   <div class="fw-semibold small mb-1 mt-2">Assets</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:2px;">
+    ${assetRows}
 
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#FFD600;margin-right:6px;border:1px solid #333;"></span>
-      <span>Bus</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#1565C0;margin-right:6px;border:1px solid #333;"></span>
-      <span>Command</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#D32F2F;margin-right:6px;border:1px solid #333;"></span>
-      <span>Community First Responder</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#8E24AA;margin-right:6px;border:1px solid:#333;"></span>
-      <span>General Purpose</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#795548;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Logistics</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#FB8C00;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Light Storm</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#EF6C00;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Medium Storm</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#C62828;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Light Rescue</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#B71C1C;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Medium Rescue</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#880E4F;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Heavy Rescue</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#5D4037;margin-right:6px;border:1px solid:#333;"></span>
-      <span>SHQ Pool</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#0288D1;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Vessel</span>
-    </div>
-
-    <div style="display:flex;align-items:center;margin:2px 0;">
-      <span style="display:inline-block;width:12px;height:12px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);background:#43A047;margin-right:6px;border:1px solid:#333;"></span>
-      <span>Portable</span>
-    </div>
-
+  </div>
   </div>
 </div>
 
-    </div>
     `;
 
     this._container = div;

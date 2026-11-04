@@ -1,6 +1,17 @@
 /* global user, urls, $, lighthouseUrl, filterViewModel, moment, layout, utility, lighthouseEnviroment, contentViewModel */
 
 var clusterCodes = require('../lib/clusters.js');
+var { simulationEnvironment, simulatedLocationsTitle } = require('../shared/cadenceSimulation.js');
+var { createPageSimulation } = require('../shared/cadenceSimulationPage.js');
+
+// The CADence exercise chosen for this Beacon environment (Train and Test
+// Beacon only), as reported by contentscripts/all.js. Created before the page
+// is ready, so it hears every report.
+var simulatedExercise = createPageSimulation({
+  host: function () {
+    return typeof urls !== 'undefined' ? urls.Base : null;
+  },
+});
 
 window.postMessage(
   {
@@ -51,10 +62,14 @@ whenWeAreReady(function () {
   var vars =
     '?userId=' +
     user.Id +
+    '&personId=' +
+    user.personId +
     '&host=' +
     urls.Base +
     '&source=' +
     location.origin +
+    '&signalr=' +
+    encodeURIComponent(urls.SignalR) +
     '&hq=' +
     user.currentHqId +
     '&start=' +
@@ -65,6 +80,15 @@ whenWeAreReady(function () {
   let lighthouseMenu = MakeMenu(lighthouseUrl, vars, user.hq.Code);
 
   function MakeMenu(lighthouseUrl, vars, unitName) {
+    // CADence simulated exercises only run on Train Beacon and Test Beacon,
+    // so the page that chooses one is only offered there.
+    var simulatedExerciseItem = simulationEnvironment(location.origin)
+      ? '<li id="lhsimexmenuitem"><a href="' +
+        lighthouseUrl +
+        'pages/simulatedexercise.html' +
+        vars +
+        '" target="_blank">CADence Simulated Exercise</a></li>'
+      : '';
     if (lighthouseEnviroment == 'Development') {
       //dev version
       return $.parseHTML(
@@ -82,7 +106,7 @@ whenWeAreReady(function () {
         lighthouseUrl +
         'pages/summary.html' +
         vars +
-        '" target="_blank">Job Summary (' +
+        '" target="_blank">Incident Summary (' +
         unitName +
         ' Today)</a>\
     </li>\
@@ -91,7 +115,7 @@ whenWeAreReady(function () {
         lighthouseUrl +
         'pages/stats.html' +
         vars +
-        '" target="_blank">Job Statistics (' +
+        '" target="_blank">Incident Statistics (' +
         unitName +
         ' Today)</a>\
     </li>\
@@ -100,7 +124,7 @@ whenWeAreReady(function () {
         lighthouseUrl +
         'pages/advexport.html' +
         vars +
-        '" target="_blank">Job Export (' +
+        '" target="_blank">Incident Export (' +
         unitName +
         ' Today)</a>\
     </li>\
@@ -127,13 +151,24 @@ whenWeAreReady(function () {
         unitName +
         ' Today)</a>\
     </li>\
+    <li role="presentation" class="divider"></li><li role="presentation" class="dropdown-header">Community Projects\
+    </li>\
+    <li id="lhradiomenuitem">\
+    <a href="' +
+        lighthouseUrl +
+        'pages/radiocon.html' +
+        vars +
+        '" target="_blank">Radio Operations Console</a>\
+    </li>' +
+        simulatedExerciseItem +
+        '\
     <li role="presentation" class="divider"></li><li role="presentation" class="dropdown-header">About\
     </li>\
     <li id="lhstoragemenuitem">\
     <a href="#" id="LHClearStorage">Delete All Collections</a>\
     </li>\
     <li>\
-    <a href="http://lighthouse.ses.nsw.gov.au/guides.html">User Guides</a>\
+    <a href="https://lighthouse.ses.nsw.gov.au/preview/guides/lad/">User Guide (Dev Preview)</a>\
     </li>\
     <li>\
     <a href="http://lighthouse.ses.nsw.gov.au">About Lighthouse</a>\
@@ -159,7 +194,7 @@ whenWeAreReady(function () {
         lighthouseUrl +
         'pages/summary.html' +
         vars +
-        '" target="_blank">Job Summary (' +
+        '" target="_blank">Incident Summary (' +
         unitName +
         ' Today)</a>\
     </li>\
@@ -168,7 +203,7 @@ whenWeAreReady(function () {
         lighthouseUrl +
         'pages/stats.html' +
         vars +
-        '" target="_blank">Job Statistics (' +
+        '" target="_blank">Incident Statistics (' +
         unitName +
         ' Today)</a>\
     </li>\
@@ -177,7 +212,7 @@ whenWeAreReady(function () {
         lighthouseUrl +
         'pages/advexport.html' +
         vars +
-        '" target="_blank">Job Export (' +
+        '" target="_blank">Incident Export (' +
         unitName +
         ' Today)</a>\
     </li>\
@@ -204,6 +239,17 @@ whenWeAreReady(function () {
         unitName +
         ' Today)</a>\
     </li>\
+    <li role="presentation" class="divider"></li><li role="presentation" class="dropdown-header">Community Projects\
+    </li>\
+    <li id="lhradiomenuitem">\
+    <a href="' +
+        lighthouseUrl +
+        'pages/radiocon.html' +
+        vars +
+        '" target="_blank">Radio Operations Console</a>\
+    </li>' +
+        simulatedExerciseItem +
+        '\
     <li role="presentation" class="divider"></li><li role="presentation" class="dropdown-header">About\
     </li>\
     <li id="lhstoragemenuitem">\
@@ -273,6 +319,39 @@ whenWeAreReady(function () {
     registerTabForTaskingRemoteControl()
   });
 
+  $('#lhradiomenuitem > a').mousedown(function () {
+    updateToken();
+  });
+
+  $('#lhsimexmenuitem > a').mousedown(function () {
+    updateToken();
+  });
+
+  // Train and Test Beacon: while a CADence exercise is chosen, a pill beside
+  // the Lighthouse menu says the asset locations Lighthouse shows aren't live.
+  // It opens the CADence Simulated Exercise page, so like the menu item it
+  // hands that page the Beacon token first.
+  if (simulationEnvironment(location.origin)) {
+    var simulatedLocationsPill = $(
+      '<li id="lhsimexpill" style="display: none"><a target="_blank">' +
+        '<span class="lh-simex-pill">Simulated locations</span></a></li>',
+    );
+    simulatedLocationsPill
+      .children('a')
+      .attr('href', lighthouseUrl + 'pages/simulatedexercise.html' + vars)
+      .mousedown(function () {
+        updateToken();
+      });
+    $('#lhmenu').after(simulatedLocationsPill);
+
+    var showSimulatedLocationsPill = function (selection) {
+      simulatedLocationsPill.children('a').attr('title', simulatedLocationsTitle(selection));
+      simulatedLocationsPill.toggle(!!selection);
+    };
+    simulatedExercise.onChange(showSimulatedLocationsPill);
+    simulatedExercise.current().then(showSimulatedLocationsPill);
+  }
+
   function updateTokenAndRegister() {
     updateToken()
     registerTabForTaskingRemoteControl()
@@ -300,7 +379,7 @@ whenWeAreReady(function () {
   }
 
   //lighthouse menu for teams
-  if (location.pathname == '/Teams') {
+  if (location.pathname.toLowerCase() == '/teams') {
     let regionfilter;
     if (user.hq.EntityTypeId != 1) {
       //make region level more obvious
@@ -477,7 +556,7 @@ whenWeAreReady(function () {
   }
 
   //lighthouse menu for situation map
-  if (location.pathname == '/Jobs/SituationalAwareness') {
+  if (location.pathname.toLowerCase() == '/jobs/situationalawareness') {
     let regionfilter;
     if (user.currentHqTypeId != 1) {
       //make region level more obvious
@@ -600,7 +679,7 @@ whenWeAreReady(function () {
 
   //lighthouse menu for jobs
 
-  if (location.pathname === '/Jobs') {
+  if (location.pathname.toLowerCase() === '/jobs') {
     let regionfilter;
     if (user.hq.EntityTypeId != 1) {
       //make region level more obvious
